@@ -48,6 +48,15 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Bump Android compile/target SDK to 35
+        run: |
+          if [ -f android/variables.gradle ]; then
+            sed -i -E 's/(compileSdkVersion[[:space:]]*=[[:space:]]*)34/\135/g' android/variables.gradle
+            sed -i -E 's/(targetSdkVersion[[:space:]]*=[[:space:]]*)34/\135/g' android/variables.gradle
+            echo "After bump:"
+            cat android/variables.gradle
+          fi
+
       - name: Decode keystore
         env:
           KEYSTORE: ${{ secrets.KEYSTORE_BASE64 }}
