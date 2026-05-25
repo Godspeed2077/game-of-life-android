@@ -58,6 +58,8 @@ let balances = [];
 let rules = [];
 let releases = [];
 let isAdmin = false;
+let subscription = null;
+let referralCodes = [];
 let activeTab = 'main';
 let saveDebounce = null;
 let mealMedia = { photo: null, voice: null };
@@ -220,7 +222,7 @@ async function onSignedIn(u) {
     loadQuests(), loadSummary(),
     loadEmails(), loadTxns(), loadConnections(),
     loadTxns7(), loadStreaks(), loadBosses(), loadBalances(), loadRules(),
-    loadReleases(), checkAdmin()
+    loadReleases(), checkAdmin(), loadSubscription(), loadReferralCodes()
   ]);
   render();
   maybeOfferCheckin();
@@ -425,10 +427,12 @@ async function refreshAfterEvent() {
 
 async function logMeal(description, photoDataUrl) {
   let macros = null;
-  try {
-    const { data } = await supa.functions.invoke('parse-meal', { body: { description, photo: photoDataUrl || null } });
-    if (data && (data.calories || data.protein_g)) macros = data;
-  } catch {}
+  if (isPaid()) {
+    try {
+      const { data } = await supa.functions.invoke('parse-meal', { body: { description, photo: photoDataUrl || null } });
+      if (data && (data.calories || data.protein_g)) macros = data;
+    } catch {}
+  }
   const meal = {
     user_id: user.id, description,
     source: photoDataUrl ? 'photo' : 'voice_or_text',
@@ -505,6 +509,105 @@ function closeSheet() {
   $('live-hr').style.display = 'none';
 }
 
+
+// ---- Subscription / billing ----
+async function loadSubscription() {
+  const { data } = await supa.from('subscriptions').select('*').eq('user_id', user.id).maybeSingle();
+  subscription = data || null;
+}
+async function loadReferralCodes() {
+  const { data } = await supa.from('referral_codes').select('*').eq('owner_user_id', user.id).order('created_at', { ascending: true });
+  referralCodes = data || [];
+}
+function isPaid() {
+  if (!subscription) return false;
+  return ['trialing','active','past_due'].includes(subscription.status);
+}
+function gatedFeature(label) {
+  if (isPaid()) return true;
+  toast(`Upgrade for ${label} — tap Account → Start trial`, 3500);
+  // Auto-expand account card
+  const card = document.getElementById('acct-card');
+  if (card && card.classList.contains('collapsed')) card.classList.remove('collapsed');
+  card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return false;
+}
+
+function renderAccount() {
+  const pill = document.getElementById('acct-status-pill');
+  const tierEl = document.getElementById('acct-tier');
+  const btn = document.getElementById('acct-action-btn');
+  const trialNote = document.getElementById('acct-trial-note');
+  if (!pill) return;
+  const s = subscription?.status || 'none';
+  const tier = subscription?.tier;
+  const labels = { none: 'FREE', trialing: 'TRIAL', active: 'ACTIVE', past_due: 'PAST DUE', canceled: 'CANCELED', expired: 'EXPIRED' };
+  pill.textContent = labels[s] || s.toUpperCase();
+  pill.className = 'acct-status-pill ' + (s === 'none' ? 'free' : s);
+  if (tier && s !== 'none') {
+    const prices = { founding: '$10/mo', early: '$15/mo', regular: '$19/mo' };
+    const num = subscription.founding_member_number;
+    tierEl.textContent = (tier === 'founding' && num ? `Founding member #${num} · ` : tier === 'founding' ? 'Founding · ' : tier === 'early' ? 'Early · ' : 'Regular · ') + prices[tier];
+  } else { tierEl.textContent = ''; }
+  trialNote.textContent = '';
+  if (s === 'none') {
+    btn.textContent = 'Start 14-day trial';
+    btn.style.display = '';
+  } else if (s === 'trialing' && subscription.trial_ends_at) {
+    const end = new Date(subscription.trial_ends_at);
+    const days = Math.max(0, Math.ceil((end - Date.now()) / 86400000));
+    trialNote.textContent = `Trial ends in ${days} day${days===1?'':'s'} · ${end.toLocaleDateString()}`;
+    btn.style.display = 'none';
+  } else if (s === 'active') {
+    btn.style.display = 'none';
+  } else if (s === 'past_due' || s === 'canceled') {
+    btn.textContent = 'Resubscribe';
+    btn.style.display = '';
+  } else {
+    btn.style.display = 'none';
+  }
+  // Referral section visible only if user has codes
+  const refSection = document.getElementById('referral-section');
+  const refList = document.getElementById('referral-codes-list');
+  if (referralCodes.length > 0) {
+    refSection.style.display = '';
+    refList.innerHTML = referralCodes.map(c => {
+      const used = !!c.redeemed_by;
+      return `<div class="referral-code ${used?'redeemed':''}" title="${used?'Already redeemed':'Tap to copy'}">${c.code}<span class="small">${used?'redeemed':'tap to copy'}</span></div>`;
+    }).join('');
+    refList.querySelectorAll('.referral-code').forEach((el, i) => {
+      const c = referralCodes[i];
+      if (c.redeemed_by) return;
+      el.addEventListener('click', () => {
+        navigator.clipboard?.writeText(c.code);
+        toast('Copied: ' + c.code);
+      });
+    });
+  } else {
+    refSection.style.display = 'none';
+  }
+}
+
+async function startCheckout() {
+  const btn = document.getElementById('acct-action-btn');
+  if (!btn) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Loading…';
+  try {
+    const ref = new URLSearchParams(window.location.search).get('ref') || null;
+    const { data, error } = await supa.functions.invoke('create-checkout', { body: { referral_code: ref, return_url: window.location.origin + '/' } });
+    if (error || !data?.url) {
+      toast('Checkout failed: ' + (data?.error || error?.message || 'unknown'));
+      btn.textContent = orig; btn.disabled = false; return;
+    }
+    window.location.href = data.url;
+  } catch (e) {
+    toast('Checkout error: ' + (e?.message || 'unknown'));
+    btn.textContent = orig; btn.disabled = false;
+  }
+}
+
 // ---- Render ----
 function render() {
   if (!character) return;
@@ -515,6 +618,7 @@ function render() {
   renderBosses();
   renderRules();
   renderReleases();
+  renderAccount();
   renderConnections();
   // Character
   $('char-name').value = character.name || '';
@@ -959,7 +1063,7 @@ $('form-workout').addEventListener('submit', async (e) => {
   let durMin = parseInt($('workout-duration').value, 10);
   let cal = parseInt($('workout-calories').value, 10) || null;
   let notes = $('workout-notes').value.trim() || null;
-  if (desc || workoutMedia.photo) {
+  if (isPaid() && (desc || workoutMedia.photo)) {
     try {
       const { data } = await supa.functions.invoke('parse-workout', { body: { description: desc, photo: workoutMedia.photo || null } });
       if (data) {
@@ -1004,6 +1108,7 @@ async function addEmailConnection(email, password) {
 }
 $('form-email').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!gatedFeature('email auto-sync')) return;
   const email = $('email-addr').value.trim(); const pw = $('email-pw').value;
   if (!email || !pw) return;
   $('email-addr').value = ''; $('email-pw').value = '';
@@ -1016,6 +1121,7 @@ $('form-email').addEventListener('submit', async (e) => {
 async function syncNow() {
   const btn = $('sync-now-btn');
   if (btn.classList.contains('spinning')) return;
+  if (!gatedFeature('email auto-sync')) return;
   btn.classList.add('spinning'); btn.textContent = 'Syncing…';
   try {
     let imap = { inserted: 0, transactions: 0 };
@@ -1040,6 +1146,7 @@ $('sync-now-btn').addEventListener('click', syncNow);
 
 // Plaid Connect Bank
 $('connect-bank-btn').addEventListener('click', async () => {
+  if (!gatedFeature('bank integration')) return;
   const btn = $('connect-bank-btn');
   btn.disabled = true; btn.textContent = '🏦 Loading…';
   try {
@@ -1187,6 +1294,7 @@ function maybeOfferCheckin() {
 
 // AI Suggest quests
 $('suggest-quests-btn').addEventListener('click', async () => {
+  if (!gatedFeature('AI side quests')) return;
   const btn = $('suggest-quests-btn'); const list = $('suggest-list');
   btn.disabled = true; btn.textContent = '✦ Thinking…';
   try {
@@ -1294,6 +1402,12 @@ $('enable-push-btn').addEventListener('click', async () => {
   if (error) { toast('Save failed: ' + error.message); return; }
   toast('Notifications enabled. Sending test…');
   try { await supa.functions.invoke('send-push', { body: { title: 'Game of Life connected', body: 'Push notifications are live.', url: '/' } }); } catch {}
+});
+
+// Subscription button
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('acct-action-btn');
+  if (btn) btn.addEventListener('click', startCheckout);
 });
 
 // Collapsible toggles

@@ -1080,6 +1080,38 @@ body::before {
 
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* Account / subscription card */
+.acct-card-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px;
+}
+.acct-status-pill {
+  display: inline-block; padding: 4px 10px; border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em;
+  text-transform: uppercase; font-weight: 700;
+}
+.acct-status-pill.free { background: var(--bg-3); color: var(--muted); }
+.acct-status-pill.trialing { background: rgba(95,193,232,0.15); color: var(--cyan); }
+.acct-status-pill.active { background: rgba(110,231,168,0.15); color: var(--green); }
+.acct-status-pill.past_due, .acct-status-pill.canceled, .acct-status-pill.expired { background: rgba(255,107,138,0.15); color: var(--red); }
+.acct-tier {
+  font-size: 12px; color: var(--muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace;
+}
+.referral-codes {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; margin-top: 10px;
+}
+.referral-code {
+  background: var(--bg-1); border: 1px dashed var(--gold); border-radius: 8px;
+  padding: 8px 10px; text-align: center; font-family: 'JetBrains Mono', monospace;
+  font-weight: 700; color: var(--gold); cursor: pointer; user-select: all;
+  position: relative; font-size: 13px;
+  transition: all 0.15s;
+}
+.referral-code:hover { background: var(--bg-2); border-style: solid; }
+.referral-code.redeemed { opacity: 0.5; border-color: var(--line); color: var(--muted); cursor: default; }
+.referral-code .small { font-size: 9px; display: block; color: var(--muted); margin-top: 2px; letter-spacing: 0.08em; }
+
 /* Hidden state */
 .hidden { display: none !important; }
 </style>
@@ -1429,6 +1461,35 @@ body::before {
     </div>
     <div class="collapsible-body">
       <div id="releases-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+
+<!-- Account / Subscription -->
+  <div class="card collapsible collapsed" id="acct-card">
+    <div class="panel-head">
+      <div class="card-title" style="margin: 0;">Account</div>
+      <button class="collapsible-toggle" data-toggle="acct-card">▾</button>
+    </div>
+    <div class="collapsible-body">
+      <div class="acct-card-row">
+        <div>
+          <div id="acct-status-line">
+            <span id="acct-status-pill" class="acct-status-pill free">FREE</span>
+          </div>
+          <div class="acct-tier" id="acct-tier"></div>
+        </div>
+        <button class="btn" id="acct-action-btn" type="button" style="white-space: nowrap;">Start trial</button>
+      </div>
+      <div id="acct-trial-note" style="font-size: 11px; color: var(--muted); margin-bottom: 8px;"></div>
+      <div id="referral-section" style="display:none; margin-top: 16px;">
+        <div style="font-size: 12px; color: var(--gold); letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">
+          ✦ Your referral codes
+        </div>
+        <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
+          Share these. Each friend who signs up + pays = +1 free month for you. Max 5 free months.
+        </div>
+        <div class="referral-codes" id="referral-codes-list"></div>
+      </div>
     </div>
   </div>
 
