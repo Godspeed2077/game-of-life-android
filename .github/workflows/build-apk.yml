@@ -48,11 +48,12 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Bump Android compile/target SDK to 35
+      - name: Bump Android SDK versions for Capgo plugin
         run: |
           if [ -f android/variables.gradle ]; then
             sed -i -E 's/(compileSdkVersion[[:space:]]*=[[:space:]]*)34/\135/g' android/variables.gradle
             sed -i -E 's/(targetSdkVersion[[:space:]]*=[[:space:]]*)34/\135/g' android/variables.gradle
+            sed -i -E 's/(minSdkVersion[[:space:]]*=[[:space:]]*)22/\123/g' android/variables.gradle
             echo "After bump:"
             cat android/variables.gradle
           fi
