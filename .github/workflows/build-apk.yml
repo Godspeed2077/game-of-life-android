@@ -87,4 +87,25 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: cd android && ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Rename AP
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk out/game-of-life.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-of-life-apk
+          path: out/game-of-life.apk
+
+      - name: Create / Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          files: out/game-of-life.apk
+          generate_release_notes: false
+          prerelease: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
