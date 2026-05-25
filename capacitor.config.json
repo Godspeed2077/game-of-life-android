@@ -1,0 +1,21 @@
+{
+  "appId": "com.gameoflifeapp",
+  "appName": "Game of Life",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#070912",
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#070912",
+      "showSpinner": false
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}

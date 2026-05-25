@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#0a0e1a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Game of Life" />
+<title>Game of Life</title>
+<link rel="manifest" href="/manifest.json" />
+<link rel="icon" type="image/svg+xml" href="/icon.svg" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Cinzel:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg-0: #070912;
+  --bg-1: #0c1124;
+  --bg-2: #131933;
+  --bg-3: #1c2447;
+  --line: #243059;
+  --text: #e6ecff;
+  --muted: #8b94b8;
+  --gold: #f5c842;
+  --gold-dim: #b89531;
+  --cyan: #5fc1e8;
+  --cyan-dim: #3a8aae;
+  --magenta: #d36bff;
+  --green: #6ee7a8;
+  --red: #ff6b8a;
+  --shadow-glow-gold: 0 0 24px rgba(245, 200, 66, 0.35);
+  --shadow-glow-cyan: 0 0 24px rgba(95, 193, 232, 0.35);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(ellipse at top, rgba(95, 193, 232, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse at bottom, rgba(211, 107, 255, 0.06) 0%, transparent 55%),
+    linear-gradient(180deg, var(--bg-0), var(--bg-1));
+  background-attachment: fixed;
+  min-height: 100vh;
+  overflow-x: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-top: env(safe-area-inset-top);
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(95, 193, 232, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(95, 193, 232, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.serif { font-family: 'Cinzel', serif; letter-spacing: 0.05em; }
+
+/* Layout */
+.app { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: 16px; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; margin-bottom: 16px;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--gold), var(--cyan));
+  display: grid; place-items: center;
+  color: var(--bg-0); font-weight: 800; font-family: 'Cinzel', serif;
+  box-shadow: var(--shadow-glow-gold);
+}
+.brand-name { font-family: 'Cinzel', serif; letter-spacing: 0.18em; font-size: 14px; color: var(--gold); }
+.brand-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; }
+
+.icon-btn {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  width: 36px; height: 36px; border-radius: 10px; cursor: pointer;
+  display: grid; place-items: center; transition: all 0.15s;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--cyan); }
+
+/* Card */
+.card {
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--line); border-radius: 16px;
+  padding: 18px; margin-bottom: 16px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  position: relative; overflow: hidden;
+}
+.card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0.5;
+}
+.card-title {
+  font-family: 'Cinzel', serif; letter-spacing: 0.16em; font-size: 12px;
+  color: var(--gold); text-transform: uppercase; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.card-title::before {
+  content: ''; width: 6px; height: 6px; background: var(--gold);
+  border-radius: 1px; transform: rotate(45deg);
+  box-shadow: 0 0 8px var(--gold);
+}
+
+/* Character header */
+.char-head { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+.lvl-badge {
+  width: 64px; height: 64px; border-radius: 14px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(245, 200, 66, 0.4), transparent 60%),
+    linear-gradient(135deg, var(--bg-3), var(--bg-2));
+  border: 2px solid var(--gold);
+  display: grid; place-items: center;
+  box-shadow: var(--shadow-glow-gold);
+  flex-shrink: 0;
+}
+.lvl-badge .lvl-label { font-size: 9px; color: var(--gold); letter-spacing: 0.2em; }
+.lvl-badge .lvl-num { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; color: var(--text); line-height: 1; }
+.char-id { flex: 1; min-width: 0; }
+.char-name {
+  font-family: 'Cinzel', serif; font-size: 22px; font-weight: 700;
+  color: var(--text); border: none; background: transparent;
+  width: 100%; outline: none; padding: 2px 4px; border-radius: 4px;
+  transition: background 0.15s;
+}
+.char-name:hover, .char-name:focus { background: rgba(95, 193, 232, 0.08); }
+.char-class {
+  font-size: 13px; color: var(--cyan); letter-spacing: 0.08em;
+  border: none; background: transparent; outline: none; width: 100%;
+  padding: 2px 4px; border-radius: 4px; margin-top: 2px;
+  transition: background 0.15s;
+}
+.char-class:hover, .char-class:focus { background: rgba(95, 193, 232, 0.08); }
+
+/* XP Bar */
+.xp-row { margin-top: 4px; }
+.xp-meta {
+  display: flex; justify-content: space-between; font-size: 11px;
+  color: var(--muted); margin-bottom: 6px; letter-spacing: 0.08em;
+  font-family: 'JetBrains Mono', monospace;
+}
+.xp-meta .xp-vals { color: var(--gold); }
+.xp-bar {
+  height: 10px; background: var(--bg-3); border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--line); position: relative;
+}
+.xp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan-dim), var(--cyan), var(--gold));
+  box-shadow: 0 0 12px var(--cyan); border-radius: 5px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+.xp-fill::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: shimmer 2.5s infinite;
+}
+@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+/* Stats grid */
+.stats-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-top: 16px;
+}
+.stat {
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 8px; text-align: center; cursor: pointer; user-select: none;
+  transition: all 0.15s;
+}
+.stat:hover { border-color: var(--cyan); transform: translateY(-1px); }
+.stat-label {
+  font-size: 10px; letter-spacing: 0.18em; color: var(--muted);
+  text-transform: uppercase; font-weight: 600;
+}
+.stat-val {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px;
+  color: var(--text); margin-top: 2px;
+}
+.stat.gold .stat-val { color: var(--gold); }
+.stat.gold .stat-label { color: var(--gold-dim); }
+
+/* Main quest box */
+.main-quest {
+  margin-top: 16px; padding: 12px; border-radius: 10px;
+  background: linear-gradient(135deg, rgba(245, 200, 66, 0.08), rgba(95, 193, 232, 0.08));
+  border: 1px solid rgba(245, 200, 66, 0.3);
+}
+.main-quest-label {
+  font-size: 10px; letter-spacing: 0.2em; color: var(--gold);
+  text-transform: uppercase; font-weight: 600; margin-bottom: 4px;
+}
+.main-quest-text {
+  font-size: 14px; color: var(--text); background: transparent;
+  border: none; outline: none; width: 100%; resize: none;
+  font-family: inherit; min-height: 22px;
+  padding: 2px 4px; border-radius: 4px;
+  transition: background 0.15s;
+}
+.main-quest-text:hover, .main-quest-text:focus { background: rgba(95, 193, 232, 0.08); }
+
+/* Quest log tabs */
+.tabs {
+  display: flex; gap: 6px; margin-bottom: 14px;
+  border-bottom: 1px solid var(--line); padding-bottom: 0;
+}
+.tab {
+  background: transparent; border: none; color: var(--muted);
+  padding: 8px 14px; font-family: 'Cinzel', serif; font-size: 12px;
+  letter-spacing: 0.16em; cursor: pointer; text-transform: uppercase;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.tab .count {
+  display: inline-block; margin-left: 6px;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: var(--muted);
+}
+
+/* Quest list */
+.quest-list { display: flex; flex-direction: column; gap: 8px; }
+.quest-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px; border-radius: 10px;
+  background: var(--bg-1); border: 1px solid var(--line);
+  border-left: 3px solid var(--cyan);
+  transition: all 0.15s;
+}
+.quest-item.type-main { border-left-color: var(--gold); }
+.quest-item.type-side { border-left-color: var(--cyan); }
+.quest-item.type-daily { border-left-color: var(--magenta); }
+.quest-item:hover { background: var(--bg-2); }
+.quest-item.completed { opacity: 0.5; }
+.quest-item.completed .quest-title { text-decoration: line-through; color: var(--muted); }
+
+.quest-check {
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  border: 2px solid var(--line); cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--bg-2); transition: all 0.15s;
+}
+.quest-check:hover { border-color: var(--gold); }
+.quest-item.completed .quest-check {
+  background: var(--green); border-color: var(--green);
+}
+.quest-item.completed .quest-check::after {
+  content: '✓'; color: var(--bg-0); font-weight: 700; font-size: 14px;
+}
+
+.quest-body { flex: 1; min-width: 0; }
+.quest-title { font-size: 14px; font-weight: 500; color: var(--text); word-wrap: break-word; }
+.quest-meta {
+  font-size: 11px; color: var(--muted); margin-top: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.quest-xp { color: var(--gold); }
+.quest-delete {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; padding: 4px 6px; border-radius: 4px;
+  font-size: 16px; line-height: 1; opacity: 0; transition: all 0.15s;
+}
+.quest-item:hover .quest-delete { opacity: 1; }
+.quest-delete:hover { color: var(--red); background: rgba(255, 107, 138, 0.1); }
+
+/* Add quest */
+.add-quest {
+  display: flex; gap: 8px; margin-top: 12px;
+}
+.add-quest input {
+  flex: 1; background: var(--bg-1); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; color: var(--text);
+  font-family: inherit; font-size: 14px; outline: none;
+  transition: all 0.15s;
+}
+.add-quest input:focus { border-color: var(--cyan); box-shadow: var(--shadow-glow-cyan); }
+.add-quest input::placeholder { color: var(--muted); }
+.btn {
+  background: linear-gradient(135deg, var(--gold), var(--gold-dim));
+  border: none; color: var(--bg-0); font-weight: 700;
+  padding: 10px 16px; border-radius: 10px; cursor: pointer;
+  font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 0.12em;
+  text-transform: uppercase; transition: all 0.15s;
+  box-shadow: 0 4px 12px rgba(245, 200, 66, 0.3);
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(245, 200, 66, 0.5); }
+.btn:active { transform: translateY(0); }
+.btn-ghost {
+  background: transparent; border: 1px solid var(--line); color: var(--text);
+  box-shadow: none;
+}
+.btn-ghost:hover { border-color: var(--cyan); box-shadow: var(--shadow-glow-cyan); }
+
+.empty {
+  text-align: center; padding: 24px 12px; color: var(--muted);
+  font-size: 13px; font-style: italic;
+}
+
+/* Daily summary */
+.day-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 10px;
+}
+.day-date {
+  font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 0.18em;
+  color: var(--gold);
+}
+.day-xp {
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  color: var(--cyan);
+}
+.day-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px;
+  margin-bottom: 12px;
+}
+.day-tile {
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 8px; text-align: center; min-height: 64px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.day-tile-label {
+  font-size: 9px; letter-spacing: 0.18em; color: var(--muted);
+  text-transform: uppercase; font-weight: 600;
+}
+.day-tile-val {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px;
+  color: var(--text); margin-top: 2px;
+}
+.day-tile-sub {
+  font-size: 10px; color: var(--muted); margin-top: 1px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.day-tile.spend .day-tile-val { color: var(--red); }
+.day-tile.income .day-tile-val { color: var(--green); }
+.day-tile.workout .day-tile-val { color: var(--magenta); }
+.day-tile.fuel .day-tile-val { color: var(--gold); }
+.day-tile.steps .day-tile-val { color: var(--cyan); }
+.day-actions {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-top: 4px;
+}
+.day-action {
+  background: var(--bg-1); border: 1px solid var(--line); color: var(--text);
+  border-radius: 10px; padding: 10px 8px; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.06em; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.day-action:hover { border-color: var(--gold); color: var(--gold); }
+.day-action svg { flex-shrink: 0; }
+
+@media (max-width: 480px) {
+  .day-grid { grid-template-columns: repeat(2, 1fr); }
+  .day-tile-val { font-size: 16px; }
+}
+
+/* Log sheet (slide-up) */
+.sheet-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  z-index: 900; backdrop-filter: blur(2px);
+}
+.sheet-backdrop.show { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 901;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border-top: 1px solid var(--cyan);
+  border-radius: 18px 18px 0 0;
+  padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+  transform: translateY(110%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: 88vh; overflow-y: auto;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.6);
+}
+.sheet.show { transform: translateY(0); }
+.sheet-handle {
+  width: 48px; height: 4px; border-radius: 2px;
+  background: var(--line); margin: 0 auto 14px;
+}
+.sheet-title {
+  font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.18em;
+  color: var(--gold); text-align: center; margin-bottom: 16px;
+  text-transform: uppercase;
+}
+.sheet-tabs {
+  display: flex; gap: 6px; margin-bottom: 16px; justify-content: center;
+}
+.sheet-tab {
+  background: var(--bg-1); border: 1px solid var(--line); color: var(--muted);
+  padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  transition: all 0.15s;
+}
+.sheet-tab.active { color: var(--gold); border-color: var(--gold); background: var(--bg-2); }
+.sheet-form { display: flex; flex-direction: column; gap: 10px; }
+.sheet-form input, .sheet-form select, .sheet-form textarea {
+  background: var(--bg-1); border: 1px solid var(--line);
+  border-radius: 10px; padding: 11px 13px; color: var(--text);
+  font-family: inherit; font-size: 14px; outline: none;
+  transition: all 0.15s; width: 100%;
+}
+.sheet-form textarea { resize: vertical; min-height: 60px; }
+.sheet-form input:focus, .sheet-form select:focus, .sheet-form textarea:focus {
+  border-color: var(--cyan); box-shadow: var(--shadow-glow-cyan);
+}
+.sheet-form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sheet-form label {
+  font-size: 11px; letter-spacing: 0.12em; color: var(--muted);
+  text-transform: uppercase; font-weight: 600;
+}
+.sheet-form .field { display: flex; flex-direction: column; gap: 4px; }
+.sheet-actions {
+  display: flex; gap: 8px; margin-top: 12px;
+}
+.sheet-actions .btn { flex: 1; }
+.media-row {
+  display: flex; gap: 8px; margin-top: 6px;
+}
+.media-btn {
+  flex: 1; background: var(--bg-1); border: 1px dashed var(--line);
+  color: var(--muted); padding: 12px; border-radius: 10px;
+  cursor: pointer; font-family: inherit; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all 0.15s;
+}
+.media-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.media-btn input { display: none; }
+.media-preview {
+  margin-top: 8px; padding: 10px; border-radius: 10px;
+  background: var(--bg-1); border: 1px solid var(--line);
+  font-size: 12px; color: var(--muted); font-style: italic;
+}
+.media-preview.has-content { color: var(--text); font-style: normal; }
+.media-preview img { max-width: 100%; border-radius: 6px; margin-top: 6px; }
+
+/* Inbox / financial / connections panels */
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.panel-actions { display: flex; gap: 6px; }
+.panel-action {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 8px; padding: 6px 10px; cursor: pointer;
+  font-size: 11px; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.06em;
+  transition: all 0.15s;
+}
+.panel-action:hover { color: var(--cyan); border-color: var(--cyan); }
+.panel-action.primary { color: var(--gold); border-color: var(--gold); }
+.panel-action.primary:hover { background: rgba(245, 200, 66, 0.1); }
+.panel-action.spinning {
+  animation: pulse 1s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; } 50% { opacity: 1; }
+}
+
+.email-list { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; }
+.email-item {
+  display: flex; gap: 10px; padding: 10px 12px;
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px;
+  cursor: pointer; transition: all 0.15s;
+  border-left: 3px solid var(--muted);
+}
+.email-item.imp-high { border-left-color: var(--red); }
+.email-item.imp-medium { border-left-color: var(--gold); }
+.email-item.imp-low { border-left-color: var(--bg-3); opacity: 0.7; }
+.email-item.imp-unrated { border-left-color: var(--cyan); }
+.email-item:hover { background: var(--bg-2); }
+.email-item.expanded { background: var(--bg-2); }
+.email-body { flex: 1; min-width: 0; }
+.email-row1 { display: flex; gap: 8px; align-items: baseline; }
+.email-from {
+  font-weight: 600; font-size: 13px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
+}
+.email-time {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted);
+  margin-left: auto; flex-shrink: 0;
+}
+.email-account {
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--cyan-dim);
+  background: rgba(95,193,232,0.1); padding: 1px 6px; border-radius: 4px;
+}
+.email-subj {
+  font-size: 13px; color: var(--text); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.email-snip {
+  font-size: 12px; color: var(--muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.email-full {
+  display: none; margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--line); font-size: 12px;
+  color: var(--text); white-space: pre-wrap; max-height: 300px; overflow-y: auto;
+}
+.email-item.expanded .email-full { display: block; }
+.email-item.expanded .email-snip { display: none; }
+.imp-badge {
+  display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 4px;
+  letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700;
+  font-family: 'JetBrains Mono', monospace; vertical-align: middle;
+}
+.imp-badge.high { background: rgba(255,107,138,0.15); color: var(--red); }
+.imp-badge.medium { background: rgba(245,200,66,0.15); color: var(--gold); }
+.imp-badge.low { background: var(--bg-3); color: var(--muted); }
+.imp-badge.unrated { background: rgba(95,193,232,0.15); color: var(--cyan); }
+.imp-fin { background: rgba(110,231,168,0.15); color: var(--green); }
+.email-actions {
+  display: flex; gap: 6px; align-items: center;
+  margin-left: auto; flex-shrink: 0;
+}
+.email-archive {
+  background: transparent; border: 1px solid var(--line);
+  color: var(--muted); border-radius: 6px;
+  padding: 3px 8px; font-size: 10px; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; letter-spacing: 0.06em;
+  text-transform: uppercase; transition: all 0.15s;
+  opacity: 0; pointer-events: none;
+}
+.email-item:hover .email-archive,
+.email-item.expanded .email-archive { opacity: 1; pointer-events: auto; }
+.email-archive:hover { color: var(--red); border-color: var(--red); }
+
+/* Cash flow chart */
+.cashflow-card { padding: 12px; margin-bottom: 10px;
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; }
+.cashflow-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 8px;
+}
+.cashflow-label {
+  font-size: 10px; letter-spacing: 0.18em; color: var(--muted);
+  text-transform: uppercase; font-weight: 600;
+}
+.cashflow-net {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700;
+  font-size: 14px;
+}
+.cashflow-net.in { color: var(--green); }
+.cashflow-net.out { color: var(--red); }
+.cashflow-bars {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  height: 60px; align-items: end;
+}
+.cashflow-day {
+  display: flex; flex-direction: column; align-items: center;
+  height: 100%; gap: 2px;
+}
+.cashflow-day .bar-stack {
+  width: 100%; flex: 1; display: flex; flex-direction: column-reverse;
+  justify-content: flex-start; gap: 1px; min-height: 2px;
+}
+.cashflow-day .bar-in {
+  background: linear-gradient(180deg, var(--green), rgba(110,231,168,0.4));
+  border-radius: 2px 2px 0 0;
+}
+.cashflow-day .bar-out {
+  background: linear-gradient(180deg, var(--red), rgba(255,107,138,0.4));
+  border-radius: 2px 2px 0 0;
+}
+.cashflow-day-label {
+  font-size: 9px; color: var(--muted); font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+}
+.cashflow-day.today .cashflow-day-label { color: var(--gold); font-weight: 700; }
+
+/* Streak tile */
+.streak-row {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+}
+.streak-pill {
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 10px; display: flex; align-items: center; gap: 6px;
+  font-size: 11px;
+}
+.streak-pill.hot { border-color: var(--gold); background: rgba(245,200,66,0.05); }
+.streak-pill.cold { opacity: 0.6; }
+.streak-icon { font-size: 14px; line-height: 1; }
+.streak-count {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700;
+  color: var(--gold); font-size: 13px;
+}
+.streak-pill.cold .streak-count { color: var(--muted); }
+.streak-label { color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* Bosses */
+.boss-list { display: flex; flex-direction: column; gap: 10px; }
+.boss-item {
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px; position: relative; overflow: hidden;
+  border-left: 3px solid var(--red);
+}
+.boss-item.defeated { opacity: 0.5; border-left-color: var(--green); }
+.boss-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.boss-name { font-weight: 600; color: var(--text); font-size: 14px; }
+.boss-reward {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--gold);
+}
+.boss-bar-wrap {
+  height: 14px; background: var(--bg-3); border-radius: 7px; overflow: hidden;
+  border: 1px solid var(--line); position: relative;
+}
+.boss-bar {
+  height: 100%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--red), var(--gold));
+  box-shadow: 0 0 12px rgba(255,107,138,0.4);
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.boss-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 6px;
+}
+.boss-hp {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
+}
+.boss-actions { display: flex; gap: 4px; }
+.boss-action {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; transition: all 0.15s;
+}
+.boss-action:hover { color: var(--gold); border-color: var(--gold); }
+.boss-action.danger:hover { color: var(--red); border-color: var(--red); }
+
+/* AI suggestions */
+.suggest-list {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 10px;
+  border-top: 1px dashed var(--line); padding-top: 10px;
+}
+.suggest-item {
+  background: linear-gradient(135deg, rgba(245,200,66,0.06), rgba(95,193,232,0.06));
+  border: 1px solid rgba(245,200,66,0.2); border-radius: 10px;
+  padding: 10px 12px; display: flex; align-items: flex-start; gap: 10px;
+}
+.suggest-body { flex: 1; min-width: 0; }
+.suggest-title { font-size: 13px; color: var(--text); font-weight: 500; }
+.suggest-reason {
+  font-size: 11px; color: var(--muted); margin-top: 3px; font-style: italic;
+}
+.suggest-add {
+  background: var(--gold); color: var(--bg-0); border: none;
+  border-radius: 8px; padding: 6px 10px; cursor: pointer;
+  font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; font-weight: 700;
+}
+.suggest-add:hover { box-shadow: 0 0 12px rgba(245,200,66,0.5); }
+
+/* Balances */
+.balance-row {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.balance-pill {
+  background: var(--bg-1); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  flex: 1 1 calc(50% - 6px);
+}
+.balance-acct {
+  font-size: 10px; letter-spacing: 0.12em; color: var(--muted);
+  text-transform: uppercase; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.balance-amt {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700;
+  font-size: 16px; color: var(--gold);
+}
+.balance-time {
+  font-size: 9px; color: var(--muted); font-family: 'JetBrains Mono', monospace;
+}
+
+/* Rules list */
+.rule-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; background: var(--bg-1);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.rule-item.disabled { opacity: 0.5; }
+.rule-meta { flex: 1; min-width: 0; }
+.rule-desc { font-size: 13px; color: var(--text); }
+.rule-detail {
+  font-size: 11px; color: var(--muted); margin-top: 2px;
+  font-family: 'JetBrains Mono', monospace; word-break: break-all;
+}
+.rule-toggle {
+  position: relative; width: 36px; height: 20px;
+  background: var(--bg-3); border: 1px solid var(--line);
+  border-radius: 10px; cursor: pointer; flex-shrink: 0;
+}
+.rule-toggle::after {
+  content: ''; position: absolute; top: 1px; left: 1px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--muted); transition: all 0.2s;
+}
+.rule-toggle.on { background: var(--green); border-color: var(--green); }
+.rule-toggle.on::after { left: 17px; background: var(--bg-0); }
+.rule-delete {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; padding: 4px 6px; border-radius: 4px;
+  font-size: 16px; transition: all 0.15s;
+}
+.rule-delete:hover { color: var(--red); background: rgba(255,107,138,0.1); }
+
+/* Transactions list */
+.tx-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.tx-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--bg-1);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.tx-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: grid; place-items: center; flex-shrink: 0;
+  background: var(--bg-2); font-size: 14px;
+}
+.tx-meta { flex: 1; min-width: 0; }
+.tx-merch { font-size: 13px; font-weight: 600; color: var(--text); }
+.tx-sub {
+  font-size: 11px; color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+.tx-amt {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px;
+  flex-shrink: 0;
+}
+.tx-amt.in { color: var(--green); }
+.tx-amt.out { color: var(--red); }
+
+/* Connections list */
+.conn-list { display: flex; flex-direction: column; gap: 6px; }
+.conn-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--bg-1);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.conn-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--bg-3); display: grid; place-items: center;
+  font-family: 'Cinzel', serif; font-weight: 700; color: var(--gold);
+  flex-shrink: 0;
+}
+.conn-meta { flex: 1; min-width: 0; }
+.conn-name { font-size: 13px; color: var(--text); font-weight: 500; }
+.conn-sub { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 1px; }
+.conn-status {
+  font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 4px; font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.conn-status.active { background: rgba(110,231,168,0.15); color: var(--green); }
+.conn-status.error { background: rgba(255,107,138,0.15); color: var(--red); }
+.conn-remove {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; padding: 4px 8px; border-radius: 4px;
+  font-size: 16px; line-height: 1; transition: all 0.15s;
+}
+.conn-remove:hover { color: var(--red); background: rgba(255,107,138,0.1); }
+
+.collapsible-toggle {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; font-size: 16px; padding: 4px;
+  transition: transform 0.2s;
+}
+.collapsible.collapsed .collapsible-body { display: none; }
+.collapsible.collapsed .collapsible-toggle { transform: rotate(-90deg); }
+
+/* ==== Landing page (shown when logged out) ==== */
+.landing { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 24px 20px 80px; }
+.landing-nav { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 32px; }
+.landing-nav .brand { display: flex; align-items: center; gap: 10px; }
+.landing-nav .brand-mark { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, var(--gold), var(--cyan)); display: grid; place-items: center; color: var(--bg-0); font-family: 'Cinzel', serif; font-weight: 800; box-shadow: var(--shadow-glow-gold); }
+.landing-nav .brand-text { font-family: 'Cinzel', serif; letter-spacing: 0.2em; font-size: 14px; color: var(--gold); }
+.landing-nav .sign-in-link { font-size: 13px; color: var(--muted); cursor: pointer; padding: 8px 12px; border-radius: 8px; border: 1px solid transparent; }
+.landing-nav .sign-in-link:hover { color: var(--cyan); border-color: var(--cyan); }
+
+.landing-hero { text-align: center; padding: 40px 0 60px; }
+.landing-hero h1 {
+  font-family: 'Cinzel', serif; font-weight: 700;
+  font-size: clamp(36px, 7vw, 72px); line-height: 1.05;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, var(--gold), var(--cyan));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  letter-spacing: 0.02em;
+}
+.landing-hero h1 .sub {
+  display: block; font-size: clamp(24px, 4vw, 42px);
+  font-weight: 600; color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  margin-top: 8px;
+}
+.landing-hero p.tagline {
+  font-size: clamp(15px, 2vw, 18px); color: var(--muted);
+  max-width: 640px; margin: 0 auto 32px; line-height: 1.5;
+}
+.landing-hero .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.landing-hero .btn-cta {
+  background: linear-gradient(135deg, var(--gold), var(--gold-dim));
+  border: none; color: var(--bg-0); font-weight: 700;
+  padding: 14px 28px; border-radius: 12px; cursor: pointer;
+  font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.16em;
+  text-transform: uppercase; transition: all 0.15s;
+  box-shadow: 0 4px 16px rgba(245, 200, 66, 0.35);
+  text-decoration: none; display: inline-block;
+}
+.landing-hero .btn-cta:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(245, 200, 66, 0.5); }
+.landing-hero .btn-cta.secondary {
+  background: transparent; color: var(--cyan);
+  border: 1px solid var(--cyan); box-shadow: none;
+}
+.landing-hero .btn-cta.secondary:hover { background: rgba(95,193,232,0.08); }
+
+.landing-features {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin: 40px 0;
+}
+.feature-card {
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--line); border-radius: 14px;
+  padding: 24px; position: relative; overflow: hidden;
+}
+.feature-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent); opacity: 0.5;
+}
+.feature-card .feature-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--bg-3); display: grid; place-items: center;
+  font-size: 20px; margin-bottom: 14px;
+}
+.feature-card h3 {
+  font-family: 'Cinzel', serif; font-size: 16px; letter-spacing: 0.12em;
+  color: var(--gold); margin-bottom: 8px; text-transform: uppercase;
+}
+.feature-card p { font-size: 14px; color: var(--text); line-height: 1.5; }
+.feature-card ul { list-style: none; margin-top: 12px; }
+.feature-card ul li {
+  font-size: 13px; color: var(--muted); padding: 4px 0;
+  padding-left: 18px; position: relative;
+}
+.feature-card ul li::before {
+  content: '◆'; color: var(--gold); position: absolute; left: 0;
+  font-size: 10px; top: 6px;
+}
+
+.landing-pricing { padding: 40px 0; text-align: center; }
+.landing-pricing > h2 {
+  font-family: 'Cinzel', serif; font-size: 24px; letter-spacing: 0.18em;
+  color: var(--gold); text-transform: uppercase; margin-bottom: 8px;
+}
+.landing-pricing > p {
+  color: var(--muted); margin-bottom: 32px; font-size: 14px;
+}
+.pricing-card {
+  max-width: 380px; margin: 0 auto;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--gold); border-radius: 18px;
+  padding: 32px 24px;
+  box-shadow: 0 10px 40px rgba(245, 200, 66, 0.15);
+  position: relative;
+}
+.pricing-card .tag {
+  position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+  background: var(--gold); color: var(--bg-0);
+  padding: 4px 12px; border-radius: 12px;
+  font-family: 'Cinzel', serif; letter-spacing: 0.16em; font-size: 10px;
+  text-transform: uppercase; font-weight: 700;
+}
+.pricing-card h3 {
+  font-family: 'Cinzel', serif; font-size: 18px; letter-spacing: 0.16em;
+  color: var(--text); margin-bottom: 8px; text-transform: uppercase;
+}
+.pricing-card .price {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700;
+  font-size: 48px; color: var(--gold); margin: 16px 0 4px;
+}
+.pricing-card .price .period { font-size: 16px; color: var(--muted); font-weight: 400; }
+.pricing-card .trial { font-size: 12px; color: var(--cyan); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 24px; }
+.pricing-card ul { list-style: none; text-align: left; margin: 20px 0; }
+.pricing-card ul li {
+  font-size: 14px; color: var(--text); padding: 6px 0;
+  padding-left: 22px; position: relative;
+}
+.pricing-card ul li::before {
+  content: '✓'; color: var(--green); position: absolute; left: 0;
+  font-weight: 700;
+}
+
+/* Auth section within landing */
+.landing-auth { padding: 60px 0 20px; }
+.auth-wrap {
+  display: grid; place-items: center; padding: 0;
+  position: relative; z-index: 1;
+}
+.auth-card {
+  width: 100%; max-width: 380px;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--line); border-radius: 18px;
+  padding: 32px 24px; text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.auth-mark {
+  width: 64px; height: 64px; margin: 0 auto 16px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--gold), var(--cyan));
+  display: grid; place-items: center;
+  color: var(--bg-0); font-family: 'Cinzel', serif; font-weight: 800; font-size: 28px;
+  box-shadow: var(--shadow-glow-gold);
+}
+.auth-title {
+  font-family: 'Cinzel', serif; font-size: 22px; letter-spacing: 0.18em;
+  color: var(--gold); margin-bottom: 4px;
+}
+.auth-sub {
+  font-size: 12px; color: var(--muted); letter-spacing: 0.16em;
+  text-transform: uppercase; margin-bottom: 24px;
+}
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.auth-form input {
+  background: var(--bg-1); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px 14px; color: var(--text);
+  font-family: inherit; font-size: 14px; outline: none;
+  transition: all 0.15s;
+}
+.auth-form input:focus { border-color: var(--cyan); box-shadow: var(--shadow-glow-cyan); }
+.auth-toggle {
+  margin-top: 16px; font-size: 12px; color: var(--muted);
+}
+.auth-toggle a { color: var(--cyan); cursor: pointer; text-decoration: none; }
+.auth-toggle a:hover { color: var(--gold); }
+.auth-msg {
+  margin-top: 12px; font-size: 13px; min-height: 18px;
+}
+.auth-msg.error { color: var(--red); }
+.auth-msg.info { color: var(--cyan); }
+.auth-msg.success { color: var(--green); }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(120%);
+  background: linear-gradient(135deg, var(--bg-3), var(--bg-2));
+  border: 1px solid var(--gold); border-radius: 12px;
+  padding: 14px 20px; color: var(--text);
+  font-family: 'Cinzel', serif; letter-spacing: 0.12em;
+  box-shadow: var(--shadow-glow-gold);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1000;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* Loading */
+.loading { display: grid; place-items: center; min-height: 100vh; color: var(--muted); }
+
+/* Responsive */
+@media (max-width: 480px) {
+  .app { padding: 12px; }
+  .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .stat-val { font-size: 20px; }
+  .char-name { font-size: 20px; }
+  .lvl-badge { width: 56px; height: 56px; }
+  .lvl-badge .lvl-num { font-size: 20px; }
+}
+
+/* Hidden state */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading" class="loading">
+  <div class="serif" style="letter-spacing: 0.3em; color: var(--gold);">LOADING...</div>
+</div>
+
+<!-- Landing / Auth screen (logged-out view) -->
+<div id="auth-screen" class="landing hidden">
+  <nav class="landing-nav">
+    <div class="brand">
+      <div class="brand-mark">G</div>
+      <span class="brand-text">GAME OF LIFE</span>
+    </div>
+    <a href="#start" class="sign-in-link">Sign in →</a>
+  </nav>
+
+  <header class="landing-hero">
+    <h1>
+      Your life.
+      <span class="sub">As a video game.</span>
+    </h1>
+    <p class="tagline">
+      Stats. Quests. Bosses. XP. Streaks. Pulled from your real workouts, real food, real money, real inbox.
+      The most fun way to actually live a deliberate life.
+    </p>
+    <div class="cta-row">
+      <a href="#start" class="btn-cta">Start Day One</a>
+      <a href="#features" class="btn-cta secondary">See how it works</a>
+    </div>
+  </header>
+
+  <section class="landing-features" id="features">
+    <div class="feature-card">
+      <div class="feature-icon">⚔️</div>
+      <h3>Real Mechanics</h3>
+      <p>A real RPG over your actual life.</p>
+      <ul>
+        <li>Level system + 5-stat character</li>
+        <li>Gold economy from real income/spend</li>
+        <li>Boss tracker with HP bars</li>
+        <li>Streaks, decay, custom rules engine</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✦</div>
+      <h3>Powered by AI</h3>
+      <p>Stop typing. Start playing.</p>
+      <ul>
+        <li>Voice-log workouts · type/duration parsed</li>
+        <li>Photo meals · macros auto-extracted</li>
+        <li>Inbox triage · only what matters</li>
+        <li>AI-generated daily quests from your context</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🛡️</div>
+      <h3>Your Data, Your Phone</h3>
+      <p>Privacy-first by design.</p>
+      <ul>
+        <li>Installs on home screen, any device</li>
+        <li>Works on iOS, Android, GrapheneOS, anything</li>
+        <li>No Google services required</li>
+        <li>Bank-grade encryption, your data stays yours</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="landing-pricing">
+    <h2>Pricing</h2>
+    <p>Built for people who actually want to level up. Cancel anytime.</p>
+    <div class="pricing-card">
+      <div class="tag">Early Access</div>
+      <h3>Founding Player</h3>
+      <div class="price">$9<span class="period"> / mo</span></div>
+      <div class="trial">7-day free trial</div>
+      <ul>
+        <li>Full game mechanics — XP, levels, stats, gold, bosses, streaks, custom rules</li>
+        <li>AI included — no API key needed, voice and photo logging built in</li>
+        <li>Connect up to 5 email accounts for automatic transaction tracking</li>
+        <li>Push notifications and cross-device sync</li>
+        <li>Bank account integration (Plaid) included when available</li>
+        <li>Cancel anytime — your data stays exportable from your account</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="landing-auth" id="start">
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <div class="auth-mark">G</div>
+        <div class="auth-title">DAY ONE</div>
+        <div class="auth-sub">Begin Your Game</div>
+        <form id="auth-form" class="auth-form">
+          <input id="auth-email" type="email" placeholder="email" autocomplete="email" required />
+          <input id="auth-password" type="password" placeholder="password (min 6)" autocomplete="current-password" minlength="6" required />
+          <button type="submit" class="btn" id="auth-submit">Sign In</button>
+        </form>
+        <div class="auth-toggle">
+          <span id="auth-toggle-text">New here?</span>
+          <a id="auth-toggle">Create account</a>
+        </div>
+        <div id="auth-msg" class="auth-msg"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Main app -->
+<div id="main-app" class="app hidden">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">G</div>
+      <div>
+        <div class="brand-name">GAME OF LIFE</div>
+        <div class="brand-sub">Day One</div>
+      </div>
+    </div>
+    <button id="logout-btn" class="icon-btn" title="Sign out" aria-label="Sign out">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+    </button>
+  </div>
+
+  <!-- Daily summary -->
+  <div class="card" id="day-card">
+    <div class="day-head">
+      <span class="day-date" id="day-date">DAY ONE</span>
+      <span class="day-xp"><span id="day-xp">+0</span> XP TODAY</span>
+    </div>
+    <div class="day-grid">
+      <div class="day-tile spend">
+        <div class="day-tile-label">Spend</div>
+        <div class="day-tile-val" id="day-spend">$0</div>
+      </div>
+      <div class="day-tile income">
+        <div class="day-tile-label">Income</div>
+        <div class="day-tile-val" id="day-income">$0</div>
+      </div>
+      <div class="day-tile workout">
+        <div class="day-tile-label">Train</div>
+        <div class="day-tile-val" id="day-workouts">0</div>
+        <div class="day-tile-sub" id="day-workout-mins">0 min</div>
+      </div>
+      <div class="day-tile fuel">
+        <div class="day-tile-label">Fuel</div>
+        <div class="day-tile-val" id="day-meals">0</div>
+        <div class="day-tile-sub" id="day-protein">0 g protein</div>
+      </div>
+      <div class="day-tile">
+        <div class="day-tile-label">Calories</div>
+        <div class="day-tile-val" id="day-calories">0</div>
+      </div>
+    </div>
+    <div class="streak-row" id="streak-row"></div>
+    <div class="day-actions">
+      <button class="day-action" data-log="meal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11h18M5 7h14M7 15h10M9 19h6"/></svg>
+        Meal
+      </button>
+      <button class="day-action" data-log="workout">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v16M18 4v16M6 12h12M2 9v6M22 9v6"/></svg>
+        Workout
+      </button>
+      <button class="day-action" data-log="money">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 110 7H6"/></svg>
+        Money
+      </button>
+    </div>
+  </div>
+
+  <!-- Inbox -->
+  <div class="card collapsible" id="inbox-card">
+    <div class="panel-head">
+      <div class="card-title" style="margin: 0;">Inbox · Today</div>
+      <div class="panel-actions">
+        <button class="panel-action primary" id="sync-now-btn">Sync</button>
+        <button class="collapsible-toggle" data-toggle="inbox-card">▾</button>
+      </div>
+    </div>
+    <div class="collapsible-body">
+      <div class="email-list" id="email-list"></div>
+    </div>
+  </div>
+
+  <!-- Financial -->
+  <div class="card collapsible" id="finance-card">
+    <div class="panel-head">
+      <div class="card-title" style="margin: 0;">Financial · Today</div>
+      <button class="collapsible-toggle" data-toggle="finance-card">▾</button>
+    </div>
+    <div class="collapsible-body">
+      <div class="balance-row" id="balance-row" style="display:none"></div>
+      <div class="cashflow-card" id="cashflow-card" style="display:none">
+        <div class="cashflow-head">
+          <span class="cashflow-label">Last 7 days</span>
+          <span class="cashflow-net" id="cashflow-net">$0</span>
+        </div>
+        <div class="cashflow-bars" id="cashflow-bars"></div>
+      </div>
+      <div class="tx-list" id="tx-list"></div>
+    </div>
+  </div>
+
+  <!-- Bosses -->
+  <div class="card collapsible" id="boss-card">
+    <div class="panel-head">
+      <div class="card-title" style="margin: 0;">Bosses</div>
+      <div class="panel-actions">
+        <button class="panel-action" id="add-boss-btn">+ Add</button>
+        <button class="collapsible-toggle" data-toggle="boss-card">▾</button>
+      </div>
+    </div>
+    <div class="collapsible-body">
+      <div class="boss-list" id="boss-list"></div>
+    </div>
+  </div>
+
+  <!-- Character sheet -->
+  <div class="card">
+    <div class="card-title">Character Sheet</div>
+    <div class="char-head">
+      <div class="lvl-badge">
+        <div>
+          <div class="lvl-label">LVL</div>
+          <div class="lvl-num" id="char-level">1</div>
+        </div>
+      </div>
+      <div class="char-id">
+        <input id="char-name" class="char-name" placeholder="Name your hero" />
+        <input id="char-class" class="char-class" placeholder="Class" />
+      </div>
+    </div>
+
+    <div class="xp-row">
+      <div class="xp-meta">
+        <span>EXPERIENCE</span>
+        <span class="xp-vals"><span id="xp-current">0</span> / <span id="xp-next">100</span></span>
+      </div>
+      <div class="xp-bar"><div class="xp-fill" id="xp-fill" style="width: 0%"></div></div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat" data-stat="stat_int" title="Click to edit">
+        <div class="stat-label">INT</div>
+        <div class="stat-val" id="s-int">10</div>
+      </div>
+      <div class="stat" data-stat="stat_cha" title="Click to edit">
+        <div class="stat-label">CHA</div>
+        <div class="stat-val" id="s-cha">10</div>
+      </div>
+      <div class="stat" data-stat="stat_str" title="Click to edit">
+        <div class="stat-label">STR</div>
+        <div class="stat-val" id="s-str">10</div>
+      </div>
+      <div class="stat" data-stat="stat_wis" title="Click to edit">
+        <div class="stat-label">WIS</div>
+        <div class="stat-val" id="s-wis">10</div>
+      </div>
+      <div class="stat" data-stat="stat_con" title="Click to edit">
+        <div class="stat-label">CON</div>
+        <div class="stat-val" id="s-con">10</div>
+      </div>
+      <div class="stat gold" data-stat="gold" title="Click to edit">
+        <div class="stat-label">GOLD</div>
+        <div class="stat-val" id="s-gold">0</div>
+      </div>
+    </div>
+
+    <div class="main-quest">
+      <div class="main-quest-label">★ Main Quest</div>
+      <textarea id="main-quest" class="main-quest-text" placeholder="What are you actually trying to do?" rows="1"></textarea>
+    </div>
+  </div>
+
+  <!-- Quest log -->
+  <div class="card">
+    <div class="card-title">Quest Log</div>
+    <div class="tabs">
+      <button class="tab active" data-tab="main">Main <span class="count" id="count-main">0</span></button>
+      <button class="tab" data-tab="side">Side <span class="count" id="count-side">0</span></button>
+      <button class="tab" data-tab="daily">Daily <span class="count" id="count-daily">0</span></button>
+    </div>
+
+    <div class="quest-list" id="quest-list"></div>
+
+    <form id="add-quest-form" class="add-quest">
+      <input id="new-quest" type="text" placeholder="Add a quest…" autocomplete="off" maxlength="200" />
+      <button type="submit" class="btn">Add</button>
+    </form>
+    <button type="button" id="suggest-quests-btn" class="panel-action" style="margin-top: 10px; width: 100%; padding: 10px;">
+      ✦ Suggest quests with AI
+    </button>
+    <div class="suggest-list" id="suggest-list" style="display:none"></div>
+  </div>
+
+  <!-- Rules editor -->
+  <div class="card collapsible collapsed" id="rules-card">
+    <div class="panel-head">
+      <div class="card-title" style="margin: 0;">Rules · Game Mechanics</div>
+      <div class="panel-actions">
+        <button class="panel-action" id="add-rule-btn">+ Rule</button>
+        <button class="collapsible-toggle" data-toggle="rules-card">▾</button>
+      </div>
+    </div>
+    <div class="collapsible-body">
+      <div id="rules-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+      <div style="margin-top:10px; font-size:11px; color:var(--muted); font-style:italic;">
+        Toggle = enable/disable. Each rule maps an event (workout, meal, transaction, etc.) to XP / gold / stat changes.
+      </div>
+    </div>
+  </div>
+
+  <!-- What's new (visible to all users) -->
+  <div class="card collapsible collapsed" id="releases-card">
+    <div class="panel-head">
+      <div class="card-title" style="margin: 0;">What's New</div>
+      <div class="panel-actions">
+        <button class="panel-action primary" id="admin-release-btn" style="display:none">+ Release</button>
+        <button class="collapsible-toggle" data-toggle="releases-card">▾</button>
+      </div>
+    </div>
+    <div class="collapsible-body">
+      <div id="releases-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+
+  <!-- Connections -->
+  <div class="card collapsible collapsed" id="conn-card">
+    <div class="panel-head">
+      <div class="card-title" style="margin: 0;">Connections</div>
+      <div class="panel-actions">
+        <button class="panel-action primary" id="connect-bank-btn">🏦 Connect Bank</button>
+        <button class="panel-action" id="enable-push-btn">🔔</button>
+        <button class="panel-action" id="add-email-btn">+ Email</button>
+        <button class="collapsible-toggle" data-toggle="conn-card">▾</button>
+      </div>
+    </div>
+    <div class="collapsible-body">
+      <div class="conn-list" id="conn-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Log sheet -->
+<div id="sheet-backdrop" class="sheet-backdrop"></div>
+<div id="sheet" class="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" id="sheet-title">Log</div>
+
+  <!-- Meal form -->
+  <form id="form-meal" class="sheet-form" data-form="meal">
+    <div class="field">
+      <label>What did you eat?</label>
+      <textarea id="meal-desc" placeholder="e.g. 4 eggs, toast, coffee with cream" required></textarea>
+    </div>
+    <div class="media-row">
+      <label class="media-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19V8a2 2 0 00-2-2h-3.17l-1.83-2H8L6.17 6H3a2 2 0 00-2 2v11a2 2 0 002 2h18a2 2 0 002-2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Photo
+        <input type="file" id="meal-photo" accept="image/*" capture="environment" />
+      </label>
+      <button type="button" class="media-btn" id="meal-voice">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4"/></svg>
+        Voice
+      </button>
+    </div>
+    <div class="media-preview" id="meal-preview" style="display:none"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Log Meal</button>
+    </div>
+  </form>
+
+  <!-- Workout form -->
+  <form id="form-workout" class="sheet-form" data-form="workout" style="display:none">
+    <div class="field">
+      <label>What did you do?</label>
+      <textarea id="workout-desc" placeholder="e.g. chest and triceps for 45 min, felt strong" rows="2"></textarea>
+    </div>
+    <div class="media-row">
+      <label class="media-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19V8a2 2 0 00-2-2h-3.17l-1.83-2H8L6.17 6H3a2 2 0 00-2 2v11a2 2 0 002 2h18a2 2 0 002-2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Photo
+        <input type="file" id="workout-photo" accept="image/*" capture="environment" />
+      </label>
+      <button type="button" class="media-btn" id="workout-voice">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4"/></svg>
+        Voice
+      </button>
+    </div>
+    <div class="media-preview" id="workout-preview" style="display:none"></div>
+
+    <details style="margin-top:8px">
+      <summary style="font-size:11px; color:var(--muted); letter-spacing:0.12em; text-transform:uppercase; cursor:pointer; padding:6px 0;">Override details (optional)</summary>
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:10px;">
+        <div class="field">
+          <label>Type</label>
+          <select id="workout-type">
+            <option value="">Auto-detect</option>
+            <option value="lift">Lift / Strength</option>
+            <option value="run">Run</option>
+            <option value="ride">Ride / Bike</option>
+            <option value="walk">Walk</option>
+            <option value="yoga">Yoga / Mobility</option>
+            <option value="hiit">HIIT / Conditioning</option>
+            <option value="swim">Swim</option>
+            <option value="hike">Hike</option>
+            <option value="sport">Sport</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Duration (min)</label>
+            <input type="number" id="workout-duration" min="1" placeholder="auto" />
+          </div>
+          <div class="field">
+            <label>Calories</label>
+            <input type="number" id="workout-calories" min="0" placeholder="auto" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Notes</label>
+          <input type="text" id="workout-notes" placeholder="any extra detail" />
+        </div>
+      </div>
+    </details>
+
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Log Workout</button>
+    </div>
+    <button type="button" class="media-btn" id="bt-pair-btn" style="margin-top:8px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8l12 8-6 6V2l6 6L6 16"/></svg>
+      Or pair Bluetooth HR for a live session
+    </button>
+  </form>
+
+  <!-- Live HR session (replaces sheet content while running) -->
+  <div id="live-hr" class="sheet-form" style="display:none">
+    <div style="text-align:center; padding: 20px 0;">
+      <div style="font-family: 'Cinzel', serif; letter-spacing: 0.18em; font-size: 12px; color: var(--gold);">LIVE SESSION</div>
+      <div id="hr-bpm" style="font-family: 'JetBrains Mono', monospace; font-size: 56px; font-weight: 700; color: var(--cyan); text-shadow: 0 0 24px rgba(95,193,232,0.5); margin: 12px 0;">—</div>
+      <div style="font-size: 11px; color: var(--muted); letter-spacing: 0.18em;">BPM</div>
+    </div>
+    <div class="row">
+      <div class="day-tile"><div class="day-tile-label">Avg</div><div class="day-tile-val" id="hr-avg">—</div></div>
+      <div class="day-tile"><div class="day-tile-label">Max</div><div class="day-tile-val" id="hr-max">—</div></div>
+      <div class="day-tile"><div class="day-tile-label">Time</div><div class="day-tile-val" id="hr-time">0:00</div></div>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" id="hr-stop">Stop &amp; Save</button>
+    </div>
+  </div>
+
+  <!-- Rule form -->
+  <form id="form-rule" class="sheet-form" data-form="rule" style="display:none">
+    <div class="field">
+      <label>Description</label>
+      <input type="text" id="rule-desc" placeholder="e.g. Coffee under $5: -1 gold" required />
+    </div>
+    <div class="field">
+      <label>Trigger event kind</label>
+      <select id="rule-kind">
+        <option value="workout">workout</option>
+        <option value="meal">meal</option>
+        <option value="transaction">transaction</option>
+        <option value="vital">vital</option>
+        <option value="quest_complete">quest_complete</option>
+        <option value="note">note</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Optional: payload filter (e.g. type=lift, category=coffee)</label>
+      <input type="text" id="rule-filter" placeholder="key=value, leave blank for any" />
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>XP reward (flat)</label>
+        <input type="number" id="rule-xp" min="0" step="5" placeholder="0" />
+      </div>
+      <div class="field">
+        <label>Gold reward (flat)</label>
+        <input type="number" id="rule-gold" step="1" placeholder="0" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Stat changes (e.g. stat_str=+1, stat_con=+1)</label>
+      <input type="text" id="rule-stats" placeholder="optional" />
+    </div>
+    <div class="field">
+      <label>Priority (higher = applied first)</label>
+      <input type="number" id="rule-priority" min="0" step="10" value="20" />
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Save Rule</button>
+    </div>
+  </form>
+
+  <!-- Daily check-in form -->
+  <form id="form-checkin" class="sheet-form" data-form="checkin" style="display:none">
+    <div style="text-align:center; padding: 4px 0 12px;">
+      <div class="serif" style="letter-spacing: 0.18em; font-size: 12px; color: var(--gold);">DAY START</div>
+      <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">30 seconds — sets the tone.</div>
+    </div>
+    <div class="field">
+      <label>Sleep quality (1 = rough · 5 = great)</label>
+      <input type="range" id="ci-sleep" min="1" max="5" step="1" value="3" />
+    </div>
+    <div class="field">
+      <label>Body — how do you feel?</label>
+      <input type="range" id="ci-body" min="1" max="5" step="1" value="3" />
+    </div>
+    <div class="field">
+      <label>One quest for today</label>
+      <input type="text" id="ci-quest" placeholder="The one thing that makes today a win" />
+    </div>
+    <div class="field">
+      <label>Anything else? (optional)</label>
+      <input type="text" id="ci-notes" placeholder="quick note" />
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" data-close>Skip</button>
+      <button type="submit" class="btn">Begin</button>
+    </div>
+  </form>
+
+  <!-- Boss form -->
+  <form id="form-boss" class="sheet-form" data-form="boss" style="display:none">
+    <div class="field">
+      <label>Boss name</label>
+      <input type="text" id="boss-name" placeholder="e.g. Ship ForgePoint v1" required />
+    </div>
+    <div class="field">
+      <label>Description (optional)</label>
+      <input type="text" id="boss-desc" placeholder="What does defeating this look like?" />
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Target value (HP)</label>
+        <input type="number" id="boss-hp" min="1" step="1" placeholder="100" required />
+      </div>
+      <div class="field">
+        <label>Unit</label>
+        <select id="boss-unit">
+          <option value="count">count</option>
+          <option value="dollars">dollars</option>
+          <option value="days">days</option>
+          <option value="reps">reps</option>
+          <option value="miles">miles</option>
+          <option value="hours">hours</option>
+          <option value="customers">customers</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>XP reward when defeated</label>
+      <input type="number" id="boss-xp" min="0" step="50" value="500" />
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Add Boss</button>
+    </div>
+  </form>
+
+  <!-- Release form (admin only) -->
+  <form id="form-release" class="sheet-form" data-form="release" style="display:none">
+    <div class="row">
+      <div class="field">
+        <label>Version (optional)</label>
+        <input type="text" id="rel-version" placeholder="0.4.0" />
+      </div>
+      <div class="field">
+        <label>Send</label>
+        <select id="rel-when">
+          <option value="now">Send now</option>
+          <option value="later">Schedule later</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" id="rel-time-field" style="display:none">
+      <label>Send at (your local time)</label>
+      <input type="datetime-local" id="rel-time" />
+    </div>
+    <div class="field">
+      <label>Title (notification headline)</label>
+      <input type="text" id="rel-title" placeholder="Heads-up: update tonight at 9pm" required maxlength="80" />
+    </div>
+    <div class="field">
+      <label>Summary (notification body, 1 line)</label>
+      <input type="text" id="rel-summary" placeholder="New AI side quests + cleaner financial view" maxlength="160" />
+    </div>
+    <div class="field">
+      <label>Why / Details (in-app changelog)</label>
+      <textarea id="rel-details" rows="4" placeholder="Why this update matters, what changes, anything users should know"></textarea>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Create Release</button>
+    </div>
+  </form>
+
+  <!-- Email connection form -->
+  <form id="form-email" class="sheet-form" data-form="email" style="display:none">
+    <div class="field">
+      <label>Email address</label>
+      <input type="email" id="email-addr" placeholder="you@gmail.com" required autocomplete="email" />
+    </div>
+    <div class="field">
+      <label>App password (NOT your normal password)</label>
+      <input type="password" id="email-pw" placeholder="16-char app password" required autocomplete="off" />
+    </div>
+    <div class="media-preview" style="display:block">
+      Provider auto-detected. Gmail / Yahoo / iCloud / Outlook supported. Use an <em>app-specific password</em> — not your account password.
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Connect</button>
+    </div>
+  </form>
+
+  <!-- Money form -->
+  <form id="form-money" class="sheet-form" data-form="money" style="display:none">
+    <div class="row">
+      <div class="field">
+        <label>Direction</label>
+        <select id="money-dir">
+          <option value="-1">Spent</option>
+          <option value="1">Received</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Amount</label>
+        <input type="number" id="money-amount" step="0.01" min="0" placeholder="0.00" required />
+      </div>
+    </div>
+    <div class="field">
+      <label>Category</label>
+      <select id="money-category">
+        <option value="restaurants">Restaurants</option>
+        <option value="coffee">Coffee</option>
+        <option value="groceries">Groceries</option>
+        <option value="gas">Gas</option>
+        <option value="entertainment">Entertainment</option>
+        <option value="bills">Bills</option>
+        <option value="transfer">Transfer</option>
+        <option value="income">Income</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Merchant / Source</label>
+      <input type="text" id="money-merchant" placeholder="e.g. Starbucks" />
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class=
