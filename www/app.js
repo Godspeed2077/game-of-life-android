@@ -1105,6 +1105,8 @@ $('form-checkin').addEventListener('submit', async (e) => {
   await supa.from('vitals').insert({ user_id: user.id, kind: 'body_score', value: body, unit: 'self_1to5', source: 'checkin', occurred_at: new Date().toISOString() });
   if (questText) await supa.from('quests').insert({ user_id: user.id, title: questText, type: 'daily', xp_reward: 50 });
   if (notes) await insertEvent('note', 'checkin', { note: notes });
+  // Fire sleep_good event so REST stat moves when sleep score is 4+
+  if (sleep >= 4) await insertEvent('sleep_good', 'checkin', { score: sleep });
   try { localStorage.setItem('lastCheckin', today); } catch {}
   toast(`Day started · ${sleep === 5 ? 'feeling great' : sleep <= 2 ? 'rough sleep, take it easy' : "let's go"}`);
   await Promise.all([loadQuests(), loadStreaks()]);

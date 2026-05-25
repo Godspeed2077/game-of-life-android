@@ -1,5 +1,5 @@
 // Game of Life service worker
-const CACHE = 'game101-v18';
+const CACHE = 'game101-v19';
 const ASSETS = [
   '/',
   '/index.html',

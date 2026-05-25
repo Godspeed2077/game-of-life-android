@@ -188,6 +188,7 @@ body::before {
 }
 .stat.gold .stat-val { color: var(--gold); }
 .stat.gold .stat-label { color: var(--gold-dim); }
+.stat-sub { font-size: 9px; color: var(--muted); margin-top: 4px; letter-spacing: 0.04em; line-height: 1.2; }
 
 /* Main quest box */
 .main-quest {
@@ -1222,29 +1223,35 @@ body::before {
     </div>
 
     <div class="stats-grid">
-      <div class="stat" data-stat="stat_int" title="Click to edit">
-        <div class="stat-label">INT</div>
-        <div class="stat-val" id="s-int">10</div>
-      </div>
-      <div class="stat" data-stat="stat_cha" title="Click to edit">
-        <div class="stat-label">CHA</div>
-        <div class="stat-val" id="s-cha">10</div>
-      </div>
       <div class="stat" data-stat="stat_str" title="Click to edit">
         <div class="stat-label">STR</div>
         <div class="stat-val" id="s-str">10</div>
-      </div>
-      <div class="stat" data-stat="stat_wis" title="Click to edit">
-        <div class="stat-label">WIS</div>
-        <div class="stat-val" id="s-wis">10</div>
+        <div class="stat-sub">lift sessions</div>
       </div>
       <div class="stat" data-stat="stat_con" title="Click to edit">
-        <div class="stat-label">CON</div>
+        <div class="stat-label">END</div>
         <div class="stat-val" id="s-con">10</div>
+        <div class="stat-sub">cardio &ge;20 min</div>
+      </div>
+      <div class="stat" data-stat="stat_cha" title="Click to edit">
+        <div class="stat-label">FUEL</div>
+        <div class="stat-val" id="s-cha">10</div>
+        <div class="stat-sub">150g protein/day</div>
+      </div>
+      <div class="stat" data-stat="stat_wis" title="Click to edit">
+        <div class="stat-label">REST</div>
+        <div class="stat-val" id="s-wis">10</div>
+        <div class="stat-sub">sleep &ge;4 / rest day</div>
+      </div>
+      <div class="stat" data-stat="stat_int" title="Click to edit">
+        <div class="stat-label">FOCUS</div>
+        <div class="stat-val" id="s-int">10</div>
+        <div class="stat-sub">main quests done</div>
       </div>
       <div class="stat gold" data-stat="gold" title="Click to edit">
         <div class="stat-label">GOLD</div>
         <div class="stat-val" id="s-gold">0</div>
+        <div class="stat-sub">your money</div>
       </div>
     </div>
 
