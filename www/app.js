@@ -1302,6 +1302,64 @@ function lastNDays(n) {
   return out;
 }
 
+async function prepareHistoryFrame() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  if (historyRange === 'all') {
+    // Find earliest record across data tables
+    const sources = [['meals','occurred_at'],['workouts','started_at'],['transactions','occurred_at'],['vitals','occurred_at'],['events','occurred_at']];
+    let earliest = null;
+    for (const [t, c] of sources) {
+      const { data } = await supa.from(t).select(c).eq('user_id', user.id).order(c, { ascending: true }).limit(1);
+      if (data && data[0]) {
+        const d = new Date(data[0][c]);
+        if (!earliest || d < earliest) earliest = d;
+      }
+    }
+    if (!earliest) { earliest = new Date(today); earliest.setDate(earliest.getDate() - 6); }
+    earliest.setHours(0,0,0,0);
+    const span = Math.max(1, Math.ceil((today - earliest) / 86400000) + 1);
+    const periodDays = span <= 90 ? 1 : span <= 365 ? 7 : 30;
+    const unit = span <= 90 ? 'day' : span <= 365 ? 'week' : 'month';
+    const buckets = [];
+    const cur = new Date(earliest);
+    while (cur <= today) {
+      buckets.push({ start: new Date(cur), key: ymdLocal(cur), value: 0, count: 0, in: 0, out: 0, protein: 0 });
+      cur.setDate(cur.getDate() + periodDays);
+    }
+    return { since: earliest, until: today, buckets, unit, periodDays, daysSpan: span, lifetime: true };
+  }
+  const n = historyRange;
+  const since = new Date(today); since.setDate(since.getDate() - n + 1);
+  const buckets = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(since); d.setDate(d.getDate() + i);
+    buckets.push({ start: d, key: ymdLocal(d), value: 0, count: 0, in: 0, out: 0, protein: 0 });
+  }
+  return { since, until: today, buckets, unit: 'day', periodDays: 1, daysSpan: n, lifetime: false };
+}
+
+function bucketIndexFor(frame, date) {
+  const d = new Date(date); d.setHours(0,0,0,0);
+  const diffMs = d - frame.since;
+  const idx = Math.floor(diffMs / (frame.periodDays * 86400000));
+  return (idx >= 0 && idx < frame.buckets.length) ? idx : -1;
+}
+
+function frameAxis(frame) {
+  if (!frame.buckets.length) return '';
+  const first = frame.buckets[0].start;
+  const last = frame.buckets[frame.buckets.length - 1].start;
+  const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: frame.lifetime && frame.daysSpan > 365 ? 'numeric' : undefined });
+  const unitText = frame.unit === 'day' ? '' : frame.unit === 'week' ? ' · weekly buckets' : ' · monthly buckets';
+  return '<div class="chart-axis"><span>' + fmt(first) + unitText + '</span><span>' + fmt(last) + '</span></div>';
+}
+
+function frameSummary(frame, totalCount) {
+  if (!frame.lifetime) return '';
+  return '<div style="font-size:11px;color:var(--muted);letter-spacing:0.04em;margin-bottom:10px;font-family:\'JetBrains Mono\',monospace;">Tracking ' + frame.daysSpan + ' day' + (frame.daysSpan===1?'':'s') + ' · since ' + frame.since.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) + '</div>';
+}
+
+
 // Build inline SVG bar chart. data = [{key, value, ...}], opts = {color, height, max?}
 function svgBarChart(data, opts) {
   opts = opts || {};
@@ -1352,6 +1410,7 @@ async function renderHistory() {
     [7, 30, 90].map(n =>
       '<button class="range-btn ' + (historyRange===n?'active':'') + '" data-range="' + n + '">' + n + 'd</button>'
     ).join('') +
+    '<button class="range-btn ' + (historyRange==="all"?'active':'') + '" data-range="all">ALL</button>' +
     '</div>';
   if (historyTab === 'meals') body.innerHTML = rangeBar + await renderMealsHistory();
   else if (historyTab === 'workouts') body.innerHTML = rangeBar + await renderWorkoutsHistory();
@@ -1360,76 +1419,74 @@ async function renderHistory() {
   else if (historyTab === 'quests') body.innerHTML = rangeBar + await renderQuestsHistory();
   // Bind range buttons
   body.querySelectorAll('.range-btn').forEach(b => b.addEventListener('click', () => {
-    historyRange = parseInt(b.dataset.range, 10);
+    const v = b.dataset.range; historyRange = (v === 'all') ? 'all' : parseInt(v, 10);
     renderHistory();
   }));
 }
 
 async function renderMealsHistory() {
-  const since = new Date(); since.setDate(since.getDate() - historyRange + 1); since.setHours(0,0,0,0);
+  const frame = await prepareHistoryFrame();
   const { data } = await supa.from('meals')
-    .select('*').eq('user_id', user.id).gte('occurred_at', since.toISOString())
-    .order('occurred_at', { ascending: false });
+    .select('*').eq('user_id', user.id).gte('occurred_at', frame.since.toISOString())
+    .order('occurred_at', { ascending: false }).limit(10000);
   const meals = data || [];
-  const days = lastNDays(historyRange);
-  const dayMap = Object.fromEntries(days.map(d => [d.key, d]));
   let totalCals = 0, totalProtein = 0;
   for (const m of meals) {
-    const k = ymdLocal(m.occurred_at);
-    if (dayMap[k]) {
-      dayMap[k].value += (m.calories || 0);
-      dayMap[k].count += 1;
-      dayMap[k].protein = (dayMap[k].protein || 0) + (m.protein_g || 0);
+    const idx = bucketIndexFor(frame, m.occurred_at);
+    if (idx >= 0) {
+      frame.buckets[idx].value += (m.calories || 0);
+      frame.buckets[idx].count += 1;
+      frame.buckets[idx].protein += (m.protein_g || 0);
     }
     totalCals += (m.calories || 0);
     totalProtein += (m.protein_g || 0);
   }
-  const avgCal = meals.length ? Math.round(totalCals / Math.max(1, historyRange)) : 0;
-  const calChart = '<div class="chart-card"><div class="chart-title">Calories per day</div>' +
-    '<div class="chart-stat">' + avgCal + '<span class="sub">avg / day</span></div>' +
-    svgBarChart(days.map(d => ({ key: d.key, value: d.value, tooltip: d.key + ': ' + d.value + ' cal' })), { color: 'var(--gold)' }) +
-    '<div class="chart-axis"><span>' + days[0].key + '</span><span>' + days[days.length-1].key + '</span></div></div>';
-  const proteinDays = days.map(d => ({ key: d.key, value: d.protein || 0, tooltip: d.key + ': ' + (d.protein||0) + 'g' }));
-  const protChart = '<div class="chart-card"><div class="chart-title">Protein per day</div>' +
-    '<div class="chart-stat">' + Math.round(totalProtein / Math.max(1, historyRange)) + '<span class="sub">g avg / day</span></div>' +
-    svgBarChart(proteinDays, { color: 'var(--cyan)' }) + '</div>';
+  const periodLabel = frame.unit === 'day' ? 'day' : frame.unit === 'week' ? 'week' : 'month';
+  const avgCal = meals.length ? Math.round(totalCals / Math.max(1, frame.buckets.length)) : 0;
+  const calChart = '<div class="chart-card"><div class="chart-title">Calories per ' + periodLabel + '</div>' +
+    '<div class="chart-stat">' + avgCal + '<span class="sub">avg / ' + periodLabel + ' · ' + totalCals.toLocaleString('en-US') + ' total cal</span></div>' +
+    svgBarChart(frame.buckets.map(b => ({ key: b.key, value: b.value, tooltip: b.key + ': ' + b.value + ' cal' })), { color: 'var(--gold)' }) +
+    frameAxis(frame) + '</div>';
+  const protChart = '<div class="chart-card"><div class="chart-title">Protein per ' + periodLabel + '</div>' +
+    '<div class="chart-stat">' + Math.round(totalProtein / Math.max(1, frame.buckets.length)) + '<span class="sub">g avg / ' + periodLabel + ' · ' + totalProtein.toLocaleString('en-US') + 'g total</span></div>' +
+    svgBarChart(frame.buckets.map(b => ({ key: b.key, value: b.protein, tooltip: b.key + ': ' + b.protein + 'g' })), { color: 'var(--cyan)' }) + '</div>';
   const list = '<div class="history-section-label">Recent (' + meals.length + ' meals)</div><div class="history-list">' +
     meals.slice(0, 50).map(m => {
       const t = new Date(m.occurred_at);
       return '<div class="history-item"><div class="h-icon">🍽️</div><div class="h-body"><div class="h-title">' + (m.description || 'meal').replace(/</g,'&lt;') + '</div><div class="h-sub">' + t.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + (m.protein_g ? ' · ' + m.protein_g + 'g protein' : '') + '</div></div><div class="h-right">' + (m.calories || '—') + ' cal</div></div>';
     }).join('') +
     (meals.length === 0 ? '<div class="empty">No meals logged in this range.</div>' : '') + '</div>';
-  return calChart + protChart + list;
+  return frameSummary(frame) + calChart + protChart + list;
 }
 
 async function renderWorkoutsHistory() {
-  const since = new Date(); since.setDate(since.getDate() - historyRange + 1); since.setHours(0,0,0,0);
+  const frame = await prepareHistoryFrame();
   const { data } = await supa.from('workouts')
-    .select('*').eq('user_id', user.id).gte('started_at', since.toISOString())
-    .order('started_at', { ascending: false });
+    .select('*').eq('user_id', user.id).gte('started_at', frame.since.toISOString())
+    .order('started_at', { ascending: false }).limit(10000);
   const workouts = data || [];
-  const days = lastNDays(historyRange);
-  const dayMap = Object.fromEntries(days.map(d => [d.key, d]));
   const typeBreakdown = {};
   let totalMin = 0;
   for (const w of workouts) {
-    const k = ymdLocal(w.started_at);
+    const idx = bucketIndexFor(frame, w.started_at);
     const min = Math.round((w.duration_seconds || 0) / 60);
-    if (dayMap[k]) { dayMap[k].value += min; dayMap[k].count += 1; }
+    if (idx >= 0) { frame.buckets[idx].value += min; frame.buckets[idx].count += 1; }
     typeBreakdown[w.type || 'other'] = (typeBreakdown[w.type || 'other'] || 0) + 1;
     totalMin += min;
   }
-  const minChart = '<div class="chart-card"><div class="chart-title">Workout minutes per day</div>' +
+  const periodLabel = frame.unit === 'day' ? 'day' : frame.unit === 'week' ? 'week' : 'month';
+  const minChart = '<div class="chart-card"><div class="chart-title">Workout minutes per ' + periodLabel + '</div>' +
     '<div class="chart-stat">' + totalMin + '<span class="sub">total min · ' + workouts.length + ' sessions</span></div>' +
-    svgBarChart(days.map(d => ({ key: d.key, value: d.value, tooltip: d.key + ': ' + d.value + ' min' })), { color: 'var(--magenta)' }) +
-    '<div class="chart-axis"><span>' + days[0].key + '</span><span>' + days[days.length-1].key + '</span></div></div>';
+    svgBarChart(frame.buckets.map(b => ({ key: b.key, value: b.value, tooltip: b.key + ': ' + b.value + ' min' })), { color: 'var(--magenta)' }) +
+    frameAxis(frame) + '</div>';
   const types = Object.entries(typeBreakdown).sort((a,b)=>b[1]-a[1]);
+  const maxType = Math.max(1, ...types.map(x=>x[1]));
   const typeBars = '<div class="chart-card"><div class="chart-title">By type</div>' +
     types.map(([t, c]) =>
       '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">' +
       '<div style="width: 60px; font-size:12px; color: var(--text);">' + t + '</div>' +
       '<div style="flex:1; background: var(--bg-3); border-radius: 4px; height: 14px; overflow:hidden;">' +
-      '<div style="height:100%; background: var(--gold); width:' + ((c / Math.max(...types.map(x=>x[1]))) * 100) + '%;"></div></div>' +
+      '<div style="height:100%; background: var(--gold); width:' + ((c / maxType) * 100) + '%;"></div></div>' +
       '<div style="font-family: \'JetBrains Mono\', monospace; font-size:11px; color: var(--muted); min-width: 28px; text-align:right;">' + c + '</div></div>'
     ).join('') + '</div>';
   const list = '<div class="history-section-label">Recent (' + workouts.length + ' sessions)</div><div class="history-list">' +
@@ -1439,40 +1496,37 @@ async function renderWorkoutsHistory() {
       return '<div class="history-item"><div class="h-icon">💪</div><div class="h-body"><div class="h-title">' + (w.type || 'workout') + (w.notes ? ' · ' + w.notes.replace(/</g,'&lt;') : '') + '</div><div class="h-sub">' + t.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' · ' + min + ' min' + (w.avg_hr ? ' · avg ' + w.avg_hr + ' bpm' : '') + '</div></div><div class="h-right">' + (w.calories || '—') + ' cal</div></div>';
     }).join('') +
     (workouts.length === 0 ? '<div class="empty">No workouts logged in this range.</div>' : '') + '</div>';
-  return minChart + typeBars + list;
+  return frameSummary(frame) + minChart + typeBars + list;
 }
 
 async function renderMoneyHistory() {
-  const since = new Date(); since.setDate(since.getDate() - historyRange + 1); since.setHours(0,0,0,0);
+  const frame = await prepareHistoryFrame();
   const { data } = await supa.from('transactions')
-    .select('*').eq('user_id', user.id).gte('occurred_at', since.toISOString())
-    .order('occurred_at', { ascending: false });
+    .select('*').eq('user_id', user.id).gte('occurred_at', frame.since.toISOString())
+    .order('occurred_at', { ascending: false }).limit(10000);
   const txs = data || [];
-  const days = lastNDays(historyRange);
-  const dayMap = Object.fromEntries(days.map(d => [d.key, { ...d, in: 0, out: 0 }]));
   let totalIn = 0, totalOut = 0;
   const catTotals = {};
   for (const tx of txs) {
-    const k = ymdLocal(tx.occurred_at);
+    const idx = bucketIndexFor(frame, tx.occurred_at);
     const c = tx.amount_cents || 0;
-    if (c >= 0) { if (dayMap[k]) dayMap[k].in += c; totalIn += c; }
-    else { if (dayMap[k]) dayMap[k].out += -c; totalOut += -c; }
+    if (c >= 0) { if (idx >= 0) frame.buckets[idx].in += c; totalIn += c; }
+    else { if (idx >= 0) frame.buckets[idx].out += -c; totalOut += -c; }
     catTotals[tx.category || 'other'] = (catTotals[tx.category || 'other'] || 0) + Math.abs(c);
   }
-  const daysArr = Object.values(dayMap);
   const flowChart = '<div class="chart-card"><div class="chart-title">Cash flow</div>' +
     '<div class="chart-stat" style="color:' + ((totalIn-totalOut)>=0?'var(--green)':'var(--red)') + ';">' +
     ((totalIn-totalOut)>=0?'+':'−') + '$' + Math.abs((totalIn-totalOut)/100).toLocaleString('en-US',{maximumFractionDigits:0}) +
     '<span class="sub">net · +$' + (totalIn/100).toLocaleString('en-US',{maximumFractionDigits:0}) + ' / −$' + (totalOut/100).toLocaleString('en-US',{maximumFractionDigits:0}) + '</span></div>' +
-    svgFlowChart(daysArr) +
-    '<div class="chart-axis"><span>' + daysArr[0].key + '</span><span>' + daysArr[daysArr.length-1].key + '</span></div></div>';
+    svgFlowChart(frame.buckets) + frameAxis(frame) + '</div>';
   const cats = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0, 8);
+  const maxCat = Math.max(1, ...cats.map(x=>x[1]));
   const catChart = '<div class="chart-card"><div class="chart-title">Top categories</div>' +
     cats.map(([c, v]) =>
       '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">' +
       '<div style="width: 80px; font-size:12px; color: var(--text);">' + c + '</div>' +
       '<div style="flex:1; background: var(--bg-3); border-radius: 4px; height: 14px; overflow:hidden;">' +
-      '<div style="height:100%; background: var(--gold); width:' + ((v / Math.max(...cats.map(x=>x[1]))) * 100) + '%;"></div></div>' +
+      '<div style="height:100%; background: var(--gold); width:' + ((v / maxCat) * 100) + '%;"></div></div>' +
       '<div style="font-family: \'JetBrains Mono\', monospace; font-size:11px; color: var(--muted); min-width: 50px; text-align:right;">$' + (v/100).toFixed(0) + '</div></div>'
     ).join('') + '</div>';
   const list = '<div class="history-section-label">Recent (' + txs.length + ' transactions)</div><div class="history-list">' +
@@ -1484,57 +1538,61 @@ async function renderMoneyHistory() {
       return '<div class="history-item"><div class="h-icon">' + icon + '</div><div class="h-body"><div class="h-title">' + (tx.merchant || tx.description || tx.category || 'transaction').replace(/</g,'&lt;') + '</div><div class="h-sub">' + t.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' · ' + (tx.category || 'other') + '</div></div><div class="h-right" style="color:' + (dir==='in'?'var(--green)':'var(--red)') + ';">' + (dir==='in'?'+':'−') + '$' + Math.abs(cents/100).toFixed(2) + '</div></div>';
     }).join('') +
     (txs.length === 0 ? '<div class="empty">No transactions in this range.</div>' : '') + '</div>';
-  return flowChart + catChart + list;
+  return frameSummary(frame) + flowChart + catChart + list;
 }
 
 async function renderBodyHistory() {
-  const since = new Date(); since.setDate(since.getDate() - historyRange + 1); since.setHours(0,0,0,0);
+  const frame = await prepareHistoryFrame();
   const { data } = await supa.from('vitals')
-    .select('*').eq('user_id', user.id).gte('occurred_at', since.toISOString())
-    .order('occurred_at', { ascending: false });
+    .select('*').eq('user_id', user.id).gte('occurred_at', frame.since.toISOString())
+    .order('occurred_at', { ascending: false }).limit(10000);
   const vits = data || [];
   const sleep = vits.filter(v => v.kind === 'sleep_score');
   const body = vits.filter(v => v.kind === 'body_score');
-  const days = lastNDays(historyRange);
-  const sleepDays = days.map(d => {
-    const v = sleep.find(s => ymdLocal(s.occurred_at) === d.key);
-    return { key: d.key, value: v ? Number(v.value) : 0 };
-  });
-  const bodyDays = days.map(d => {
-    const v = body.find(s => ymdLocal(s.occurred_at) === d.key);
-    return { key: d.key, value: v ? Number(v.value) : 0 };
-  });
+  // Two parallel bucket arrays
+  const sleepBuckets = frame.buckets.map(b => ({ ...b, value: 0, count: 0 }));
+  const bodyBuckets = frame.buckets.map(b => ({ ...b, value: 0, count: 0 }));
+  for (const v of sleep) {
+    const idx = bucketIndexFor(frame, v.occurred_at);
+    if (idx >= 0) { sleepBuckets[idx].value += Number(v.value); sleepBuckets[idx].count += 1; }
+  }
+  for (const v of body) {
+    const idx = bucketIndexFor(frame, v.occurred_at);
+    if (idx >= 0) { bodyBuckets[idx].value += Number(v.value); bodyBuckets[idx].count += 1; }
+  }
+  for (const b of sleepBuckets) if (b.count > 1) b.value = b.value / b.count;
+  for (const b of bodyBuckets) if (b.count > 1) b.value = b.value / b.count;
   const avgSleep = sleep.length ? (sleep.reduce((s,v)=>s+Number(v.value),0) / sleep.length).toFixed(1) : '—';
   const avgBody = body.length ? (body.reduce((s,v)=>s+Number(v.value),0) / body.length).toFixed(1) : '—';
   const sleepChart = '<div class="chart-card"><div class="chart-title">Sleep score (1-5)</div>' +
     '<div class="chart-stat">' + avgSleep + '<span class="sub">avg · ' + sleep.length + ' check-ins</span></div>' +
-    svgBarChart(sleepDays.map(d=>({key:d.key,value:d.value,tooltip:d.key+': '+d.value})), { color: 'var(--cyan)', max: 5 }) + '</div>';
+    svgBarChart(sleepBuckets.map(b=>({key:b.key,value:b.value,tooltip:b.key+': '+b.value.toFixed(1)})), { color: 'var(--cyan)', max: 5 }) +
+    frameAxis(frame) + '</div>';
   const bodyChart = '<div class="chart-card"><div class="chart-title">Body feel (1-5)</div>' +
     '<div class="chart-stat">' + avgBody + '<span class="sub">avg · ' + body.length + ' check-ins</span></div>' +
-    svgBarChart(bodyDays.map(d=>({key:d.key,value:d.value,tooltip:d.key+': '+d.value})), { color: 'var(--magenta)', max: 5 }) + '</div>';
+    svgBarChart(bodyBuckets.map(b=>({key:b.key,value:b.value,tooltip:b.key+': '+b.value.toFixed(1)})), { color: 'var(--magenta)', max: 5 }) + '</div>';
   if (vits.length === 0) {
-    return sleepChart + bodyChart + '<div class="empty">No check-ins in this range. Do the daily check-in to start tracking sleep / body.</div>';
+    return frameSummary(frame) + sleepChart + bodyChart + '<div class="empty">No check-ins in this range. Do the daily check-in to start tracking sleep / body.</div>';
   }
-  return sleepChart + bodyChart;
+  return frameSummary(frame) + sleepChart + bodyChart;
 }
 
 async function renderQuestsHistory() {
-  const since = new Date(); since.setDate(since.getDate() - historyRange + 1); since.setHours(0,0,0,0);
+  const frame = await prepareHistoryFrame();
   const { data } = await supa.from('events')
-    .select('*').eq('user_id', user.id).eq('kind', 'quest_complete').gte('occurred_at', since.toISOString())
-    .order('occurred_at', { ascending: false });
+    .select('*').eq('user_id', user.id).eq('kind', 'quest_complete').gte('occurred_at', frame.since.toISOString())
+    .order('occurred_at', { ascending: false }).limit(10000);
   const evs = data || [];
-  const days = lastNDays(historyRange);
-  const dayMap = Object.fromEntries(days.map(d => [d.key, d]));
   for (const e of evs) {
-    const k = ymdLocal(e.occurred_at);
-    if (dayMap[k]) { dayMap[k].value += 1; dayMap[k].xp = (dayMap[k].xp || 0) + (e.xp_delta || 0); }
+    const idx = bucketIndexFor(frame, e.occurred_at);
+    if (idx >= 0) { frame.buckets[idx].value += 1; frame.buckets[idx].xp = (frame.buckets[idx].xp || 0) + (e.xp_delta || 0); }
   }
   const totalXp = evs.reduce((s, e) => s + (e.xp_delta || 0), 0);
-  const chart = '<div class="chart-card"><div class="chart-title">Quests completed per day</div>' +
-    '<div class="chart-stat">' + evs.length + '<span class="sub">completions · +' + totalXp + ' XP</span></div>' +
-    svgBarChart(days.map(d => ({ key: d.key, value: d.value, tooltip: d.key + ': ' + d.value })), { color: 'var(--gold)' }) +
-    '<div class="chart-axis"><span>' + days[0].key + '</span><span>' + days[days.length-1].key + '</span></div></div>';
+  const periodLabel = frame.unit === 'day' ? 'day' : frame.unit === 'week' ? 'week' : 'month';
+  const chart = '<div class="chart-card"><div class="chart-title">Quests completed per ' + periodLabel + '</div>' +
+    '<div class="chart-stat">' + evs.length + '<span class="sub">completions · +' + totalXp.toLocaleString('en-US') + ' XP</span></div>' +
+    svgBarChart(frame.buckets.map(b => ({ key: b.key, value: b.value, tooltip: b.key + ': ' + b.value })), { color: 'var(--gold)' }) +
+    frameAxis(frame) + '</div>';
   const list = '<div class="history-section-label">Recent (' + evs.length + ' completions)</div><div class="history-list">' +
     evs.slice(0, 50).map(e => {
       const t = new Date(e.occurred_at);
@@ -1543,7 +1601,7 @@ async function renderQuestsHistory() {
       return '<div class="history-item"><div class="h-icon">✨</div><div class="h-body"><div class="h-title">' + title.replace(/</g,'&lt;') + '</div><div class="h-sub">' + t.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + (type ? ' · ' + type : '') + '</div></div><div class="h-right">+' + (e.xp_delta || 0) + ' XP</div></div>';
     }).join('') +
     (evs.length === 0 ? '<div class="empty">No quest completions in this range.</div>' : '') + '</div>';
-  return chart + list;
+  return frameSummary(frame) + chart + list;
 }
 
 // Wire up button + tabs + close
