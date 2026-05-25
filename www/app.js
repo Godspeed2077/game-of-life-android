@@ -334,7 +334,32 @@ async function addQuest(title, type) {
   quests.unshift(data); render();
 }
 
+function todayYMD() {
+  const z = new Date();
+  return z.getFullYear() + '-' + String(z.getMonth()+1).padStart(2,'0') + '-' + String(z.getDate()).padStart(2,'0');
+}
+function isQuestDoneVisually(q) {
+  if (q.type === 'daily') return q.last_completed_date === todayYMD();
+  return q.status === 'completed';
+}
 async function toggleQuest(q) {
+  if (q.type === 'daily') {
+    const today = todayYMD();
+    const doneToday = q.last_completed_date === today;
+    if (!doneToday) {
+      q.last_completed_date = today;
+      const { error } = await supa.from('quests').update({ last_completed_date: today }).eq('id', q.id);
+      if (error) { q.last_completed_date = null; toast('Update failed'); return; }
+      await insertEvent('quest_complete', 'manual', { quest_id: q.id, title: q.title, type: q.type, xp_reward: q.xp_reward });
+      await refreshAfterEvent();
+      toast(`+${q.xp_reward} XP`);
+    } else {
+      q.last_completed_date = null;
+      await supa.from('quests').update({ last_completed_date: null }).eq('id', q.id);
+    }
+    render();
+    return;
+  }
   if (q.status === 'active') {
     q.status = 'completed';
     q.completed_at = new Date().toISOString();
@@ -489,15 +514,19 @@ function render() {
     list.innerHTML = `<div class="empty">No ${activeTab} quests yet. Add one below.</div>`;
   } else {
     list.innerHTML = '';
-    filtered.sort((a,b) => (a.status === b.status ? 0 : a.status === 'active' ? -1 : 1));
+    filtered.sort((a,b) => {
+      const aDone = isQuestDoneVisually(a), bDone = isQuestDoneVisually(b);
+      return aDone === bDone ? 0 : aDone ? 1 : -1;
+    });
     for (const q of filtered) {
       const el = document.createElement('div');
-      el.className = `quest-item type-${q.type} ${q.status === 'completed' ? 'completed' : ''}`;
+      const done = isQuestDoneVisually(q);
+      el.className = `quest-item type-${q.type} ${done ? 'completed' : ''}`;
       el.innerHTML = `
         <div class="quest-check"></div>
         <div class="quest-body">
           <div class="quest-title"></div>
-          <div class="quest-meta"><span class="quest-xp">+${q.xp_reward} XP</span>${q.completed_at ? ' · done ' + relTime(q.completed_at) : ''}</div>
+          <div class="quest-meta"><span class="quest-xp">+${q.xp_reward} XP</span>${done ? (q.type==='daily' ? ' · done today (resets at midnight)' : ' · done ' + relTime(q.completed_at)) : ''}</div>
         </div>
         <button class="quest-delete" title="Delete">×</button>`;
       el.querySelector('.quest-title').textContent = q.title;
