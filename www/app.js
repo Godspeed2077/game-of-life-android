@@ -148,6 +148,12 @@ $('logout-btn').addEventListener('click', async () => {
 async function checkForAppUpdates() {
   if (!window.BUILD_VERSION) return; // PWA — service worker handles updates
   try {
+    // Notify Capgo plugin that the current bundle is healthy (must call within ~10s of launch)
+    const cap = window.Capacitor;
+    const updater = cap && cap.Plugins && cap.Plugins.CapacitorUpdater;
+    if (updater && updater.notifyAppReady) {
+      try { await updater.notifyAppReady(); } catch {}
+    }
     const r = await fetch('https://gameoflifeapp.vercel.app/api/version', { cache: 'no-store' });
     if (!r.ok) return;
     const info = await r.json();
@@ -158,17 +164,41 @@ async function checkForAppUpdates() {
 
 function showUpdateBanner(info) {
   if (document.getElementById('update-banner')) return;
+  const cap = window.Capacitor;
+  const updater = cap && cap.Plugins && cap.Plugins.CapacitorUpdater;
+  const canHotUpdate = !!(updater && updater.download && info.bundle_url);
   const banner = document.createElement('div');
   banner.id = 'update-banner';
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#f5c842,#b89531);color:#070912;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(245,200,66,0.4);font-family:Inter,system-ui,sans-serif;';
   const versionText = (info.version || 'new build');
-  banner.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;">New version available — ' + versionText + '</div><div style="font-size:11px;opacity:0.8;">Tap Update to download the latest APK.</div></div><button id="update-now" style="background:#070912;color:#f5c842;border:none;padding:8px 14px;border-radius:8px;font-family:Cinzel,serif;font-size:11px;letter-spacing:0.12em;font-weight:700;cursor:pointer;">UPDATE</button><button id="update-dismiss" style="background:transparent;color:#070912;border:none;padding:4px 8px;cursor:pointer;font-size:20px;line-height:1;">×</button>';
+  const subline = canHotUpdate ? 'Tap to download the latest update.' : 'Tap to download the latest APK.';
+  banner.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;">New version available — ' + versionText + '</div><div id="update-sub" style="font-size:11px;opacity:0.8;">' + subline + '</div></div><button id="update-now" style="background:#070912;color:#f5c842;border:none;padding:8px 14px;border-radius:8px;font-family:Cinzel,serif;font-size:11px;letter-spacing:0.12em;font-weight:700;cursor:pointer;min-width:80px;">UPDATE</button><button id="update-dismiss" style="background:transparent;color:#070912;border:none;padding:4px 8px;cursor:pointer;font-size:20px;line-height:1;">×</button>';
   document.body.appendChild(banner);
-  document.getElementById('update-now').onclick = () => {
-    const url = info.download_url || 'https://gameoflifeapp.vercel.app/download.apk';
-    window.location.href = url;
+  const btn = document.getElementById('update-now');
+  const sub = document.getElementById('update-sub');
+  const dismiss = document.getElementById('update-dismiss');
+  dismiss.onclick = () => banner.remove();
+  btn.onclick = async () => {
+    if (canHotUpdate) {
+      btn.disabled = true;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" style="animation:spin 0.8s linear infinite;vertical-align:middle;"><circle cx="12" cy="12" r="10" stroke="#070912" stroke-width="3" fill="none" stroke-dasharray="40 20"/></svg>';
+      sub.textContent = 'Downloading update…';
+      try {
+        const result = await updater.download({ url: info.bundle_url, version: info.version });
+        sub.textContent = 'Applying update…';
+        await updater.set({ id: result.id });
+        // app reloads automatically into the new bundle
+      } catch (e) {
+        console.error('hot-update failed', e);
+        sub.textContent = 'Update failed: ' + (e && e.message ? e.message : 'unknown');
+        btn.disabled = false;
+        btn.textContent = 'RETRY';
+      }
+    } else {
+      const url = info.download_url || 'https://gameoflifeapp.vercel.app/download.apk';
+      window.location.href = url;
+    }
   };
-  document.getElementById('update-dismiss').onclick = () => banner.remove();
 }
 
 async function onSignedIn(u) {
