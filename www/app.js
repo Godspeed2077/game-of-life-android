@@ -136,11 +136,41 @@ $('logout-btn').addEventListener('click', async () => {
   show($('auth-screen'));
 });
 
+// ---- APK auto-update detection ----
+// BUILD_VERSION is injected by GitHub Actions at APK build time.
+// PWA users have it as null, so the check no-ops for them.
+async function checkForAppUpdates() {
+  if (!window.BUILD_VERSION) return; // PWA — service worker handles updates
+  try {
+    const r = await fetch('/api/version', { cache: 'no-store' });
+    if (!r.ok) return;
+    const info = await r.json();
+    if (!info.version || info.version === window.BUILD_VERSION) return;
+    showUpdateBanner(info);
+  } catch (e) { console.warn('update check failed', e); }
+}
+
+function showUpdateBanner(info) {
+  if (document.getElementById('update-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'update-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#f5c842,#b89531);color:#070912;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(245,200,66,0.4);font-family:Inter,system-ui,sans-serif;';
+  const versionText = (info.version || 'new build');
+  banner.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;">New version available — ' + versionText + '</div><div style="font-size:11px;opacity:0.8;">Tap Update to download the latest APK.</div></div><button id="update-now" style="background:#070912;color:#f5c842;border:none;padding:8px 14px;border-radius:8px;font-family:Cinzel,serif;font-size:11px;letter-spacing:0.12em;font-weight:700;cursor:pointer;">UPDATE</button><button id="update-dismiss" style="background:transparent;color:#070912;border:none;padding:4px 8px;cursor:pointer;font-size:20px;line-height:1;">×</button>';
+  document.body.appendChild(banner);
+  document.getElementById('update-now').onclick = () => {
+    const url = info.download_url || 'https://gameoflifeapp.vercel.app/download.apk';
+    window.location.href = url;
+  };
+  document.getElementById('update-dismiss').onclick = () => banner.remove();
+}
+
 async function onSignedIn(u) {
   user = u;
   hide($('auth-screen'));
   hide($('loading'));
   show($('main-app'));
+  checkForAppUpdates(); // fire-and-forget
   await loadCharacter();
   // Save the device's timezone if we don't have one or it changed (so daily counters reset at LOCAL midnight)
   try {
@@ -1209,7 +1239,7 @@ document.querySelectorAll('[data-toggle]').forEach(b => {
   try {
     const { data: { session } } = await supa.auth.getSession();
     if (session) await onSignedIn(session.user);
-    else { hide($('loading')); show($('auth-screen')); }
+    else { hide($('loading')); show($('auth-screen')); checkForAppUpdates(); }
   } catch (e) { surfaceFatal(e?.message || String(e), e?.stack); }
 })();
 

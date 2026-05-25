@@ -1,9 +1,10 @@
 // Game of Life service worker
-const CACHE = 'game101-v15';
+const CACHE = 'game101-v18';
 const ASSETS = [
   '/',
   '/index.html',
   '/app.js',
+  '/build-version.js',
   '/supabase.js',
   '/manifest.json',
   '/icon.svg',
@@ -70,6 +71,4 @@ self.addEventListener('notificationclick', (event) => {
       for (const w of wins) {
         if (w.url.includes(self.location.origin)) { w.focus(); w.navigate(url); return; }
       }
-      return self.clients.openWindow(url);
-    })
- 
+      return self.clients.op
