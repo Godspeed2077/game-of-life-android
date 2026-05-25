@@ -37,6 +37,12 @@ const SUPABASE_URL = 'https://rbnqyaxwpsokworjmpti.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_XOpy9BmVTkz65s6kOF3WHA_rkWQ4Yqv';
 const supa = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Show current build version in top bar (visible diagnostic)
+document.addEventListener('DOMContentLoaded', () => {
+  const sub = document.querySelector('.brand-sub');
+  if (sub) sub.textContent = window.BUILD_VERSION || 'PWA';
+});
+
 // ---- State ----
 let user = null;
 let character = null;
@@ -142,7 +148,7 @@ $('logout-btn').addEventListener('click', async () => {
 async function checkForAppUpdates() {
   if (!window.BUILD_VERSION) return; // PWA — service worker handles updates
   try {
-    const r = await fetch('/api/version', { cache: 'no-store' });
+    const r = await fetch('https://gameoflifeapp.vercel.app/api/version', { cache: 'no-store' });
     if (!r.ok) return;
     const info = await r.json();
     if (!info.version || info.version === window.BUILD_VERSION) return;
