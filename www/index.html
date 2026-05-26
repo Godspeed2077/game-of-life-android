@@ -1937,5 +1937,83 @@ body::before {
   } catch (e) { /* never block the app on a banner */ }
 })();
 </script>
+
+<!-- Pull-to-refresh indicator -->
+<div id="ptr-indicator" style="position:fixed; top:0; left:50%; transform:translate(-50%, -60px); z-index:9997; pointer-events:none; transition:transform 0.2s ease-out, opacity 0.2s; opacity:0;">
+  <div style="background:#1a1f2e; border:1px solid rgba(245,200,66,0.4); border-radius:50%; width:44px; height:44px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+    <svg id="ptr-arrow" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f5c842" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.15s;">
+      <path d="M21 12a9 9 0 11-9-9c2.4 0 4.6.9 6.3 2.4M21 4v6h-6"/>
+    </svg>
+  </div>
+</div>
+<script>
+(function () {
+  var THRESHOLD = 70;
+  var startY = 0, currentY = 0, pulling = false, refreshing = false;
+  var ind = document.getElementById('ptr-indicator');
+  var arrow = document.getElementById('ptr-arrow');
+
+  function atTop() {
+    return (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
+  }
+  function onTouchStart(e) {
+    if (refreshing || !atTop()) return;
+    var t = e.touches && e.touches[0];
+    if (!t) return;
+    startY = t.clientY;
+    currentY = startY;
+    pulling = true;
+  }
+  function onTouchMove(e) {
+    if (!pulling || refreshing) return;
+    var t = e.touches && e.touches[0];
+    if (!t) return;
+    currentY = t.clientY;
+    var delta = currentY - startY;
+    if (delta <= 0) { reset(); return; }
+    // Translate the indicator with rubber-band damping
+    var pull = Math.min(delta * 0.5, 100);
+    ind.style.transition = 'none';
+    ind.style.transform = 'translate(-50%, ' + (pull - 60) + 'px)';
+    ind.style.opacity = String(Math.min(1, pull / 60));
+    // Rotate the arrow as user pulls
+    var rot = Math.min(360, (pull / THRESHOLD) * 360);
+    arrow.style.transform = 'rotate(' + rot + 'deg)';
+  }
+  function onTouchEnd() {
+    if (!pulling || refreshing) { pulling = false; return; }
+    pulling = false;
+    var delta = currentY - startY;
+    if (delta * 0.5 >= THRESHOLD) {
+      // Pulled far enough — fire refresh
+      refreshing = true;
+      ind.style.transition = 'transform 0.2s ease-out';
+      ind.style.transform = 'translate(-50%, 20px)';
+      ind.style.opacity = '1';
+      // Spin the arrow
+      arrow.style.transition = 'none';
+      var spinStart = Date.now();
+      var spinTimer = setInterval(function () {
+        arrow.style.transform = 'rotate(' + ((Date.now() - spinStart) * 0.8 % 360) + 'deg)';
+      }, 16);
+      // Reload
+      setTimeout(function () { window.location.reload(); }, 250);
+    } else {
+      reset();
+    }
+  }
+  function reset() {
+    ind.style.transition = 'transform 0.2s ease-out, opacity 0.2s';
+    ind.style.transform = 'translate(-50%, -60px)';
+    ind.style.opacity = '0';
+    arrow.style.transform = 'rotate(0deg)';
+    pulling = false;
+  }
+  document.addEventListener('touchstart', onTouchStart, { passive: true });
+  document.addEventListener('touchmove', onTouchMove, { passive: true });
+  document.addEventListener('touchend', onTouchEnd, { passive: true });
+  document.addEventListener('touchcancel', onTouchEnd, { passive: true });
+})();
+</script>
 </body>
 </html>
