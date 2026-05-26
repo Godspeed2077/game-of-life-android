@@ -76,6 +76,10 @@ let connections = [];
 let txns7 = [];
 let streaks = { workout: 0, meal: 0, log: 0 };
 let bosses = [];
+let progress = null;  // character_progress RPC result: {overall, streak_multiplier, domains}
+let domainsExpanded = false;
+let lastKnownTierRank = null;
+
 let balances = [];
 let rules = [];
 let releases = [];
@@ -256,7 +260,7 @@ async function onSignedIn(u) {
     loadQuests(), loadSummary(),
     loadEmails(), loadTxns(), loadConnections(),
     loadTxns7(), loadStreaks(), loadBosses(), loadBalances(), loadRules(),
-    loadReleases(), checkAdmin(), loadSubscription(), loadReferralCodes(), loadProfile(), loadAiUsage()
+    loadReleases(), checkAdmin(), loadSubscription(), loadReferralCodes(), loadProfile(), loadAiUsage(), loadProgress()
   ]);
   // Refresh auto-tracked bosses (e.g. workout streak) so a missed day resets to 0.
   await recomputeAutoBosses();
@@ -278,6 +282,25 @@ async function loadReleases() {
 }
 
 // ---- Loaders ----
+async function loadProgress() {
+  if (!user) return;
+  try {
+    const { data, error } = await supa.rpc('character_progress', { p_user_id: user.id });
+    if (error) { console.warn('character_progress failed', error); return; }
+    progress = data || null;
+    // Detect tier-up (compare against previously stored rank in localStorage)
+    if (progress && progress.overall && progress.overall.tier) {
+      const newRank = progress.overall.tier.rank;
+      const prev = parseInt(localStorage.getItem('lastTierRank') || '0', 10);
+      if (prev > 0 && newRank > prev) {
+        const name = progress.overall.tier.name;
+        toast(`★ TIER UP — You are now ${name}!`, 6000);
+      }
+      if (newRank > prev) localStorage.setItem('lastTierRank', String(newRank));
+    }
+  } catch (e) { console.warn('loadProgress error', e); }
+}
+
 async function loadCharacter() {
   const { data, error } = await supa.from('characters').select('*').eq('user_id', user.id).single();
   if (error && error.code !== 'PGRST116') console.error(error);
@@ -460,7 +483,7 @@ async function insertEvent(kind, source, payload, occurred_at) {
 }
 
 async function refreshAfterEvent() {
-  await Promise.all([loadCharacter(), loadSummary(), loadStreaks(), loadTxns7(), loadBalances()]);
+  await Promise.all([loadCharacter(), loadSummary(), loadStreaks(), loadTxns7(), loadBalances(), loadProgress()]);
   render();
 }
 
@@ -861,9 +884,47 @@ function render() {
   $('char-name').value = character.name || '';
   $('char-class').value = character.class || '';
   $('char-level').textContent = character.level;
-  $('xp-current').textContent = character.xp;
-  $('xp-next').textContent = character.xp_to_next;
-  $('xp-fill').style.width = Math.min(100, (character.xp / Math.max(1, character.xp_to_next)) * 100) + '%';
+  // Use progress (from character_progress RPC) when present, else fall back to characters table
+  const ov = progress && progress.overall ? progress.overall : null;
+  if (ov && ov.span_of_level > 0) {
+    $('xp-current').textContent = Number(ov.progress_in_level).toLocaleString();
+    $('xp-next').textContent = Number(ov.span_of_level).toLocaleString();
+    $('xp-fill').style.width = Math.min(100, (Number(ov.progress_in_level) / Math.max(1, Number(ov.span_of_level))) * 100) + '%';
+    const tierName = ov.tier && ov.tier.name ? ov.tier.name.toUpperCase() : 'NOVICE';
+    $('char-tier-name').textContent = tierName;
+  } else {
+    $('xp-current').textContent = character.xp;
+    $('xp-next').textContent = character.xp_to_next;
+    $('xp-fill').style.width = Math.min(100, (character.xp / Math.max(1, character.xp_to_next)) * 100) + '%';
+  }
+  // Streak multiplier badge
+  const multBadge = $('char-mult-badge');
+  if (multBadge && progress && progress.streak_multiplier) {
+    const m = Number(progress.streak_multiplier);
+    if (m > 1.0) {
+      multBadge.textContent = '×' + m.toFixed(2).replace(/\.?0+$/, '') + ' streak';
+      multBadge.style.display = 'inline-block';
+    } else {
+      multBadge.style.display = 'none';
+    }
+  }
+  // Per-domain bars (only updates DOM if user has expanded the panel — render anyway for snappy expand)
+  if (progress && progress.domains) {
+    for (const d of ['body','mind','money','social']) {
+      const dom = progress.domains[d];
+      if (!dom) continue;
+      const tierEl = document.getElementById('d-' + d + '-tier');
+      const lvlEl = document.getElementById('d-' + d + '-level');
+      const fillEl = document.getElementById('d-' + d + '-fill');
+      if (tierEl) tierEl.textContent = dom.tier && dom.tier.name ? dom.tier.name : 'Novice';
+      if (lvlEl) lvlEl.textContent = 'L' + dom.level;
+      if (fillEl) {
+        const span = Math.max(1, Number(dom.span_of_level));
+        const prog = Math.max(0, Number(dom.progress_in_level));
+        fillEl.style.width = Math.min(100, (prog / span) * 100) + '%';
+      }
+    }
+  }
   $('s-int').textContent = character.stat_int;
   $('s-cha').textContent = character.stat_cha;
   $('s-str').textContent = character.stat_str;
@@ -2041,6 +2102,20 @@ async function renderQuestsHistory() {
 
 // Wire up button + tabs + close
 document.addEventListener('DOMContentLoaded', () => {
+  // Per-domain levels expand/collapse
+  const toggle = document.getElementById('domains-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      const panel = document.getElementById('domains-panel');
+      const icon = document.getElementById('domains-toggle-icon');
+      const label = document.getElementById('domains-toggle-label');
+      if (!panel) return;
+      domainsExpanded = !domainsExpanded;
+      panel.style.display = domainsExpanded ? 'flex' : 'none';
+      if (icon) icon.textContent = domainsExpanded ? '▴' : '▾';
+      if (label) label.textContent = domainsExpanded ? 'Hide per-domain levels' : 'Show per-domain levels';
+    });
+  }
   const btn = document.getElementById('history-btn');
   if (btn) btn.addEventListener('click', openHistory);
   const close = document.getElementById('history-close');

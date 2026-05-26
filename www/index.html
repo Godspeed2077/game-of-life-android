@@ -176,6 +176,25 @@ body::before {
   height: 10px; background: var(--bg-3); border-radius: 6px; overflow: hidden;
   border: 1px solid var(--line); position: relative;
 }
+
+.char-tier-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.char-tier-name { font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.18em; color: var(--gold); font-weight: 600; }
+.char-mult-badge { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 6px; border-radius: 8px; background: rgba(95,193,232,0.15); color: var(--cyan); font-weight: 600; letter-spacing: 0.04em; }
+.domains-toggle {
+  width: 100%; background: var(--bg-3); border: 1px solid rgba(255,255,255,0.08); color: var(--muted);
+  padding: 8px 12px; border-radius: 8px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; margin-top: 12px; display: flex; align-items: center; gap: 8px; justify-content: center;
+}
+.domains-toggle:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.domains-panel { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; padding: 10px; background: var(--bg-3); border-radius: 8px; }
+.domain-row { display: flex; flex-direction: column; gap: 4px; }
+.domain-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.domain-name { font-family: 'Cinzel', serif; letter-spacing: 0.16em; font-weight: 700; min-width: 56px; }
+.domain-tier { color: var(--muted); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+.domain-level { margin-left: auto; font-family: 'JetBrains Mono', monospace; color: var(--text); font-weight: 600; }
+.domain-bar { height: 6px; background: var(--bg-2); border-radius: 3px; overflow: hidden; }
+.domain-fill { height: 100%; transition: width 0.4s cubic-bezier(0.4, 0.0, 0.2, 1); border-radius: 3px; }
+
 .xp-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--cyan-dim), var(--cyan), var(--gold));
@@ -1399,15 +1418,58 @@ body::before {
       <div class="char-id">
         <input id="char-name" class="char-name" placeholder="Name your hero" />
         <input id="char-class" class="char-class" placeholder="Class" />
+        <div class="char-tier-row">
+          <span id="char-tier-name" class="char-tier-name">NOVICE</span>
+          <span id="char-mult-badge" class="char-mult-badge" style="display:none;">×1.0</span>
+        </div>
       </div>
     </div>
 
     <div class="xp-row">
       <div class="xp-meta">
-        <span>EXPERIENCE</span>
-        <span class="xp-vals"><span id="xp-current">0</span> / <span id="xp-next">100</span></span>
+        <span id="xp-meta-label">EXPERIENCE</span>
+        <span class="xp-vals"><span id="xp-current">0</span> / <span id="xp-next">100</span> to next</span>
       </div>
       <div class="xp-bar"><div class="xp-fill" id="xp-fill" style="width: 0%"></div></div>
+    </div>
+
+    <button type="button" id="domains-toggle" class="domains-toggle">
+      <span id="domains-toggle-icon">▾</span>
+      <span id="domains-toggle-label">Show per-domain levels</span>
+    </button>
+    <div id="domains-panel" class="domains-panel" style="display:none;">
+      <div class="domain-row" data-domain="body">
+        <div class="domain-meta">
+          <span class="domain-name" style="color:#f5c842;">BODY</span>
+          <span class="domain-tier" id="d-body-tier">Novice</span>
+          <span class="domain-level" id="d-body-level">L1</span>
+        </div>
+        <div class="domain-bar"><div class="domain-fill" id="d-body-fill" style="width:0%; background: linear-gradient(90deg, #f5c842, #b89531);"></div></div>
+      </div>
+      <div class="domain-row" data-domain="mind">
+        <div class="domain-meta">
+          <span class="domain-name" style="color:#5fc1e8;">MIND</span>
+          <span class="domain-tier" id="d-mind-tier">Novice</span>
+          <span class="domain-level" id="d-mind-level">L1</span>
+        </div>
+        <div class="domain-bar"><div class="domain-fill" id="d-mind-fill" style="width:0%; background: linear-gradient(90deg, #5fc1e8, #2d7ba3);"></div></div>
+      </div>
+      <div class="domain-row" data-domain="money">
+        <div class="domain-meta">
+          <span class="domain-name" style="color:#6ee7a8;">MONEY</span>
+          <span class="domain-tier" id="d-money-tier">Novice</span>
+          <span class="domain-level" id="d-money-level">L1</span>
+        </div>
+        <div class="domain-bar"><div class="domain-fill" id="d-money-fill" style="width:0%; background: linear-gradient(90deg, #6ee7a8, #2d9d6f);"></div></div>
+      </div>
+      <div class="domain-row" data-domain="social">
+        <div class="domain-meta">
+          <span class="domain-name" style="color:#ff6b8a;">SOCIAL</span>
+          <span class="domain-tier" id="d-social-tier">Novice</span>
+          <span class="domain-level" id="d-social-level">L1</span>
+        </div>
+        <div class="domain-bar"><div class="domain-fill" id="d-social-fill" style="width:0%; background: linear-gradient(90deg, #ff6b8a, #a13556);"></div></div>
+      </div>
     </div>
 
     <div class="stats-grid">
