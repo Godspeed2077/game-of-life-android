@@ -184,15 +184,27 @@ function showUpdateBanner(info) {
     if (canHotUpdate) {
       btn.disabled = true;
       btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" style="animation:spin 0.8s linear infinite;vertical-align:middle;"><circle cx="12" cy="12" r="10" stroke="#070912" stroke-width="3" fill="none" stroke-dasharray="40 20"/></svg>';
-      sub.textContent = 'Downloading update…';
+      sub.textContent = 'Downloading ' + info.version + '…';
       try {
         const result = await updater.download({ url: info.bundle_url, version: info.version });
-        sub.textContent = 'Applying update…';
+        if (!result || !result.id) throw new Error('download returned no bundle id');
+        sub.textContent = 'Applying ' + info.version + '…';
         await updater.set({ id: result.id });
-        // app reloads automatically into the new bundle
+        // Mark the brand-new bundle as healthy *before* reloading, so Capgo
+        // won't roll back. notifyAppReady on the next launch is the canonical
+        // path; calling it here defends against weird race conditions.
+        try { await updater.notifyAppReady(); } catch {}
+        sub.textContent = 'Reloading…';
+        // Capgo's reload() is the cleanest path; window.location.reload() is a fallback.
+        if (typeof updater.reload === 'function') {
+          try { await updater.reload(); return; } catch (e) { console.warn('updater.reload failed, falling back', e); }
+        }
+        // Force a fresh document load so the new build-version.js is parsed.
+        window.location.replace(window.location.pathname + '?u=' + Date.now());
       } catch (e) {
         console.error('hot-update failed', e);
-        sub.textContent = 'Update failed: ' + (e && e.message ? e.message : 'unknown');
+        const msg = e && e.message ? e.message : (typeof e === 'string' ? e : 'unknown');
+        sub.textContent = 'Update failed: ' + msg.slice(0, 80);
         btn.disabled = false;
         btn.textContent = 'RETRY';
       }
@@ -1950,34 +1962,4 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.history-tab').forEach(t => {
     t.addEventListener('click', () => {
       document.querySelectorAll('.history-tab').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      historyTab = t.dataset.htab;
-      renderHistory();
-    });
-  });
-});
-
-// ============================================================
-
-// Boot
-(async () => {
-  try {
-    const { data: { session } } = await supa.auth.getSession();
-    if (session) await onSignedIn(session.user);
-    else { hide($('loading')); show($('auth-screen')); checkForAppUpdates(); }
-  } catch (e) { surfaceFatal(e?.message || String(e), e?.stack); }
-})();
-
-// Service worker registration
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
-      reg.addEventListener('updatefound', () => {
-        const sw = reg.installing;
-        if (sw) sw.addEventListener('statechange', () => {
-          if (sw.state === 'activated') console.log('SW activated');
-        });
-      });
-    }).catch(() => {});
-  });
-}
+      t.classList.add('active
