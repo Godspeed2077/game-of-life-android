@@ -24,7 +24,8 @@
     "CapacitorUpdater": {
       "autoUpdate": false,
       "directUpdate": false,
-      "responseTimeout": 30
+      "responseTimeout": 30,
+      "appReadyTimeout": 60000
     }
   }
 }
