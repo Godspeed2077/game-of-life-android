@@ -8,6 +8,25 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Game of Life" />
 <title>Game of Life</title>
+<!-- Capgo rollback prevention: fire notifyAppReady as early as humanly possible. -->
+<script>
+(function () {
+  var fired = false;
+  function fire() {
+    if (fired) return true;
+    var c = window.Capacitor, p = c && c.Plugins, u = p && p.CapacitorUpdater;
+    if (u && u.notifyAppReady) {
+      try { u.notifyAppReady(); fired = true; return true; } catch (e) {}
+    }
+    return false;
+  }
+  if (fire()) return;
+  var n = 0;
+  var t = setInterval(function () { if (fire() || ++n > 200) clearInterval(t); }, 50);
+  window.addEventListener('capacitorReady', fire);
+  document.addEventListener('deviceready', fire);
+})();
+</script>
 <link rel="manifest" href="/manifest.json" />
 <link rel="icon" type="image/svg+xml" href="/icon.svg" />
 <link rel="apple-touch-icon" href="/icon-192.png" />
