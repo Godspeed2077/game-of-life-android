@@ -1306,6 +1306,9 @@ body::before {
     <button id="history-btn" class="icon-btn" title="History" aria-label="History" style="margin-right: 6px;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 16l4-6 4 3 5-8"/></svg>
     </button>
+    <button id="help-btn" class="icon-btn" title="About / Help" aria-label="Help" style="margin-right: 6px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+    </button>
     <button id="logout-btn" class="icon-btn" title="Sign out" aria-label="Sign out">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
     </button>
@@ -1951,6 +1954,69 @@ body::before {
     <button class="history-tab" data-htab="quests">Quests</button>
   </div>
   <div class="history-body" id="history-body"></div>
+</div>
+
+
+<!-- About / Help sheet -->
+<div id="sheet-help" class="sheet hidden" data-sheet-id="help">
+  <div class="sheet-head">
+    <div class="sheet-title">About &amp; Help</div>
+    <button class="sheet-close" type="button" data-close>×</button>
+  </div>
+  <div class="sheet-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));">
+    <div style="text-align:center; margin-bottom: 18px;">
+      <div style="font-family: 'Cinzel', serif; font-size: 18px; letter-spacing: 0.18em; color: var(--gold);">GAME OF LIFE</div>
+      <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">
+        <span id="help-build-version">v?</span> · Your life as a video game.
+      </div>
+    </div>
+
+    <div style="background: var(--bg-3); padding: 12px; border-radius: 8px; margin-bottom: 14px; font-size: 12px; color: var(--text); line-height: 1.5;">
+      Track real-life activity as XP. Hit boss milestones. Build streaks. Level up across body, mind, money, and social.
+      The further you go, the more meaningful the rewards — including subscription discounts at Apprentice (10% off), Adept (25% off),
+      and Master+ tiers.
+    </div>
+
+    <!-- Quick share button: opens native share sheet with referral link/code -->
+    <button type="button" class="panel-action" id="help-share-btn" style="width:100%; margin-bottom: 8px;">
+      <span style="display:inline-flex; align-items:center; gap:8px; justify-content:center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+        Share Game of Life with friends
+      </span>
+    </button>
+
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 18px 0 8px;">FEEDBACK</div>
+    <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">All submissions go straight to the developer. Bugs, ideas, anything.</div>
+
+    <form id="form-feedback" class="sheet-form" style="display:flex; flex-direction:column; gap:10px;">
+      <div class="field">
+        <label>Type</label>
+        <select id="fb-kind">
+          <option value="bug">🐛 Bug report</option>
+          <option value="suggestion">✨ Suggestion / feature idea</option>
+          <option value="message">💬 Message to the dev</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Subject</label>
+        <input type="text" id="fb-subject" maxlength="120" placeholder="One-liner" required />
+      </div>
+      <div class="field">
+        <label>Details</label>
+        <textarea id="fb-body" rows="5" maxlength="4000" placeholder="What happened? What did you expect? What would make it better?" required></textarea>
+      </div>
+      <button type="submit" class="btn">Send</button>
+    </form>
+
+    <div id="help-my-feedback-section" style="display:none; margin-top: 18px;">
+      <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--muted); margin-bottom: 8px;">YOUR PAST SUBMISSIONS</div>
+      <div id="help-my-feedback-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+    </div>
+
+    <div style="margin-top: 24px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); text-align: center; font-size: 11px; color: var(--muted); line-height: 1.6;">
+      Built with care — thank you for being here.
+    </div>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>

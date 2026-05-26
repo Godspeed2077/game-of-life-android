@@ -554,6 +554,105 @@ async function logWorkout(type, durationMin, calories, notes) {
   await refreshAfterEvent();
 }
 
+
+// === About / Help sheet + feedback submission ===
+function openHelpSheet() {
+  // Stamp build version into the about line
+  const v = document.getElementById('help-build-version');
+  if (v) v.textContent = (window.BUILD_VERSION || 'PWA') + (window.BUILD_TIME ? (' (' + new Date(window.BUILD_TIME).toLocaleDateString() + ')') : '');
+  // Show the sheet (existing openSheet handles overlay + animation)
+  openSheet('help');
+  // Lazy-load the user's past feedback so they can see status of bugs they've filed
+  if (user) loadMyFeedback();
+}
+
+async function loadMyFeedback() {
+  try {
+    const { data, error } = await supa.from('feedback').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20);
+    if (error) return;
+    const section = document.getElementById('help-my-feedback-section');
+    const list = document.getElementById('help-my-feedback-list');
+    if (!list || !section) return;
+    if (!data || !data.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    list.innerHTML = '';
+    for (const f of data) {
+      const el = document.createElement('div');
+      el.style.cssText = 'background: var(--bg-3); padding: 8px 10px; border-radius: 6px; font-size: 11px; display: flex; align-items: center; gap: 8px;';
+      const icon = ({ bug: '🐛', suggestion: '✨', message: '💬' })[f.kind] || '·';
+      const statusColors = { new: 'var(--muted)', seen: 'var(--cyan)', in_progress: 'var(--gold)', resolved: 'var(--green)', wontfix: 'var(--red)' };
+      const dot = '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:' + (statusColors[f.status] || 'var(--muted)') + ';"></span>';
+      el.innerHTML = '<span style="flex-shrink:0;">' + icon + '</span><span style="flex:1; color: var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + (f.subject || '(no subject)').replace(/</g,'&lt;') + '</span>' + dot + '<span style="color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px;">' + (f.status || 'new') + '</span>';
+      list.appendChild(el);
+    }
+  } catch (e) { console.warn('loadMyFeedback failed', e); }
+}
+
+async function submitFeedback(e) {
+  e.preventDefault();
+  const kind = document.getElementById('fb-kind').value;
+  const subject = document.getElementById('fb-subject').value.trim();
+  const body = document.getElementById('fb-body').value.trim();
+  if (!subject || !body) { toast('Subject and details required'); return; }
+  // Best-effort platform detection
+  const ua = navigator.userAgent || '';
+  let platform = 'pwa';
+  if (window.Capacitor && window.Capacitor.getPlatform) {
+    try { platform = window.Capacitor.getPlatform(); } catch {}
+  } else if (/Android/.test(ua)) platform = 'android-pwa';
+  else if (/iPad|iPhone|iPod/.test(ua)) platform = 'ios-pwa';
+  const row = {
+    user_id: user ? user.id : null,
+    user_email: user ? user.email : null,
+    kind, subject, body,
+    build_version: window.BUILD_VERSION || 'pwa',
+    platform
+  };
+  const { error } = await supa.from('feedback').insert(row);
+  if (error) { toast('Send failed: ' + (error.message || 'try again')); return; }
+  toast('Sent. Thank you!', 3000);
+  document.getElementById('fb-subject').value = '';
+  document.getElementById('fb-body').value = '';
+  if (user) loadMyFeedback();
+}
+
+// === Share-out: opens native share sheet so the user can post to ANY app ===
+async function shareApp(extra) {
+  // Pull the user's first available referral code (if signed in) so the link
+  // gives the friend the 14-day extension bonus on signup.
+  let refCode = null;
+  try {
+    if (user && referralCodes && referralCodes.length) {
+      const open = referralCodes.find(c => !c.redeemed_by_user_id) || referralCodes[0];
+      refCode = open ? open.code : null;
+    }
+  } catch {}
+  const baseUrl = 'https://forgepointrelay.com';
+  const url = refCode ? (baseUrl + '/?ref=' + encodeURIComponent(refCode)) : baseUrl;
+  const text = (extra && extra.text) || 'I’m playing my life as an RPG. Workouts, meals, money — everything becomes XP. Try Game of Life — 14-day free trial' + (refCode ? ' (use my code for +7 days)' : '') + ':';
+  const title = (extra && extra.title) || 'Game of Life';
+  // Web Share API (works on iOS Safari, Android Chrome, modern browsers)
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text, url });
+      return;
+    } catch (e) { /* user dismissed — fall through to clipboard */ }
+  }
+  // Fallback: copy to clipboard
+  try {
+    await navigator.clipboard.writeText(text + ' ' + url);
+    toast('Link copied to clipboard — paste anywhere', 3500);
+  } catch (e) {
+    toast(url, 5000);
+  }
+}
+
+// Generic share-progress helper — for bosses defeated, level-ups, streaks
+async function shareProgress(label, detail) {
+  const text = (detail ? detail + ' — ' : '') + 'tracking my life in Game of Life.';
+  await shareApp({ title: label || 'Game of Life', text });
+}
+
 // Recomputes hp_current on all auto-tracked bosses for the current user.
 // Called after logging a workout AND on app load (so missed days reset the streak).
 async function recomputeAutoBosses() {
@@ -762,9 +861,15 @@ function renderAccount() {
     refList.querySelectorAll('.referral-code').forEach((el, i) => {
       const c = referralCodes[i];
       if (c.redeemed_by) return;
-      el.addEventListener('click', () => {
-        navigator.clipboard?.writeText(c.code);
-        toast('Copied: ' + c.code);
+      el.addEventListener('click', async () => {
+        // Native share when available, copy to clipboard otherwise
+        const url = 'https://forgepointrelay.com/?ref=' + encodeURIComponent(c.code);
+        const text = 'Try Game of Life — life as an RPG. Use my code for +7 days on the 14-day trial: ' + c.code;
+        if (navigator.share) {
+          try { await navigator.share({ title: 'Game of Life', text, url }); return; } catch {}
+        }
+        try { await navigator.clipboard.writeText(url); toast('Link copied: ' + c.code); }
+        catch { toast('Code: ' + c.code); }
       });
     });
   } else {
@@ -2102,6 +2207,18 @@ async function renderQuestsHistory() {
 
 // Wire up button + tabs + close
 document.addEventListener('DOMContentLoaded', () => {
+  // About / Help sheet open button
+  const helpBtn = document.getElementById('help-btn');
+  if (helpBtn) helpBtn.addEventListener('click', openHelpSheet);
+
+  // Share button inside the help sheet
+  const helpShare = document.getElementById('help-share-btn');
+  if (helpShare) helpShare.addEventListener('click', () => shareApp());
+
+  // Feedback form submit
+  const fbForm = document.getElementById('form-feedback');
+  if (fbForm) fbForm.addEventListener('submit', submitFeedback);
+
   // Per-domain levels expand/collapse
   const toggle = document.getElementById('domains-toggle');
   if (toggle) {
