@@ -37,6 +37,28 @@ const SUPABASE_URL = 'https://rbnqyaxwpsokworjmpti.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_XOpy9BmVTkz65s6kOF3WHA_rkWQ4Yqv';
 const supa = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ---- Capgo rollback safety ----
+// Capgo rolls back the new bundle if notifyAppReady() isn't called within ~10s
+// of bundle activation. Auth + network can easily blow that budget on cold
+// starts, so we fire as early as possible and retry until the plugin is loaded.
+(function markReady() {
+  let tries = 0;
+  const fire = () => {
+    const ready = window.Capacitor?.Plugins?.CapacitorUpdater?.notifyAppReady;
+    if (ready) {
+      try { ready.call(window.Capacitor.Plugins.CapacitorUpdater).catch(() => {}); } catch {}
+      return true;
+    }
+    return false;
+  };
+  if (fire()) return;
+  // Plugin may not have injected yet at module-eval time. Retry until 8s in.
+  const interval = setInterval(() => {
+    tries++;
+    if (fire() || tries > 80) clearInterval(interval);
+  }, 100);
+})();
+
 // Show current build version in top bar (visible diagnostic)
 document.addEventListener('DOMContentLoaded', () => {
   const sub = document.querySelector('.brand-sub');
