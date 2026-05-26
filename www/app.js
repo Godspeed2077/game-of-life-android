@@ -176,16 +176,39 @@ $('logout-btn').addEventListener('click', async () => {
 async function checkForAppUpdates() {
   if (!window.BUILD_VERSION) return; // PWA — service worker handles updates
   try {
-    // Notify Capgo plugin that the current bundle is healthy (must call within ~10s of launch)
     const cap = window.Capacitor;
     const updater = cap && cap.Plugins && cap.Plugins.CapacitorUpdater;
     if (updater && updater.notifyAppReady) {
       try { await updater.notifyAppReady(); } catch {}
     }
-    const r = await fetch('https://gameoflifeapp.vercel.app/api/version', { cache: 'no-store' });
+    // Rollback detection: if we previously attempted a hot-update to version X
+    // but BUILD_VERSION still doesn't match X on this launch, Capgo rolled it back.
+    // Bump a counter; after the threshold, we'll show APK download instead of hot-update.
+    let hotUpdateFailureCount = 0;
+    try {
+      const attemptedTarget = localStorage.getItem('hotUpdateAttempted');
+      if (attemptedTarget && attemptedTarget !== window.BUILD_VERSION) {
+        // Rollback happened
+        hotUpdateFailureCount = (parseInt(localStorage.getItem('hotUpdateFailures') || '0', 10) || 0) + 1;
+        localStorage.setItem('hotUpdateFailures', String(hotUpdateFailureCount));
+        localStorage.removeItem('hotUpdateAttempted');
+      } else if (attemptedTarget && attemptedTarget === window.BUILD_VERSION) {
+        // Success — clear the failure counter
+        localStorage.removeItem('hotUpdateAttempted');
+        localStorage.setItem('hotUpdateFailures', '0');
+      } else {
+        hotUpdateFailureCount = parseInt(localStorage.getItem('hotUpdateFailures') || '0', 10) || 0;
+      }
+    } catch {}
+    // Allow user to override (?channel=stable in URL)
+    const params = new URLSearchParams(window.location.search);
+    const channel = params.get('channel') || localStorage.getItem('updateChannel') || 'beta';
+    const r = await fetch('https://gameoflifeapp.vercel.app/api/version?channel=' + channel, { cache: 'no-store' });
     if (!r.ok) return;
     const info = await r.json();
     if (!info.version || info.version === window.BUILD_VERSION) return;
+    // If hot-update has failed ≥1 time for this target, force the APK-download path
+    info._forceApkFallback = (hotUpdateFailureCount >= 1);
     showUpdateBanner(info);
   } catch (e) { console.warn('update check failed', e); }
 }
@@ -194,12 +217,15 @@ function showUpdateBanner(info) {
   if (document.getElementById('update-banner')) return;
   const cap = window.Capacitor;
   const updater = cap && cap.Plugins && cap.Plugins.CapacitorUpdater;
-  const canHotUpdate = !!(updater && updater.download && info.bundle_url);
+  // Force APK download when the previous hot-update rolled back. Capgo's safety
+  // timer is too aggressive on this device — the user can always install the
+  // APK directly and that's guaranteed to apply.
+  const canHotUpdate = !!(updater && updater.download && info.bundle_url) && !info._forceApkFallback;
   const banner = document.createElement('div');
   banner.id = 'update-banner';
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#f5c842,#b89531);color:#070912;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(245,200,66,0.4);font-family:Inter,system-ui,sans-serif;';
   const versionText = (info.version || 'new build');
-  const subline = canHotUpdate ? 'Tap to download the latest update.' : 'Tap to download the latest APK.';
+  const subline = canHotUpdate ? 'Tap to download the latest update.' : (info._forceApkFallback ? 'Previous in-place update got rolled back — installing the APK directly fixes it permanently.' : 'Tap to download the latest APK.');
   banner.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;">New version available — ' + versionText + '</div><div id="update-sub" style="font-size:11px;opacity:0.8;">' + subline + '</div></div><button id="update-now" style="background:#070912;color:#f5c842;border:none;padding:8px 14px;border-radius:8px;font-family:Cinzel,serif;font-size:11px;letter-spacing:0.12em;font-weight:700;cursor:pointer;min-width:80px;">UPDATE</button><button id="update-dismiss" style="background:transparent;color:#070912;border:none;padding:4px 8px;cursor:pointer;font-size:20px;line-height:1;">×</button>';
   document.body.appendChild(banner);
   const btn = document.getElementById('update-now');
@@ -216,6 +242,7 @@ function showUpdateBanner(info) {
         if (!result || !result.id) throw new Error('download returned no bundle id');
         sub.textContent = 'Applying ' + info.version + '…';
         await updater.set({ id: result.id });
+        try { localStorage.setItem('hotUpdateAttempted', info.version); } catch {}
         // Mark the brand-new bundle as healthy *before* reloading, so Capgo
         // won't roll back. notifyAppReady on the next launch is the canonical
         // path; calling it here defends against weird race conditions.
