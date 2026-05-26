@@ -1384,9 +1384,33 @@ function renderConnections() {
     el.querySelector('.conn-name').textContent = display;
     el.querySelector('.conn-remove').addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!confirm(`Remove ${display}?`)) return;
-      if (c._isPlaid) await supa.from('plaid_items').delete().eq('id', c.id);
-      else await supa.from('connections').delete().eq('id', c.id);
+      const isPlaid = c.provider === 'plaid' || c._isPlaid;
+      const warn = isPlaid
+        ? `Disconnect ${display} from Game of Life?\n\nThis revokes our access to your bank via Plaid and stops the monthly Plaid fee.`
+        : `Remove ${display}?`;
+      if (!confirm(warn)) return;
+      try {
+        // Use the plaid-remove Edge Function for ALL connection types so the
+        // server can revoke Plaid items cleanly. It also handles IMAP / others.
+        const { data: { session } } = await supa.auth.getSession();
+        const r = await fetch(SUPABASE_URL + '/functions/v1/plaid-remove', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + session.access_token,
+            'apikey': SUPABASE_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ connection_id: c.id })
+        });
+        const j = await r.json();
+        if (!r.ok || j.error) {
+          toast(j.error || 'Remove failed');
+        } else {
+          toast(isPlaid ? 'Bank disconnected · Plaid subscription stopped' : 'Removed');
+        }
+      } catch (err) {
+        toast('Remove failed: ' + (err?.message || err));
+      }
       await loadConnections(); renderConnections();
     });
     list.appendChild(el);
