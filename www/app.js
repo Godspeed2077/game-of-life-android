@@ -1962,4 +1962,32 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.history-tab').forEach(t => {
     t.addEventListener('click', () => {
       document.querySelectorAll('.history-tab').forEach(x => x.classList.remove('active'));
-      t.classList.add('active
+      t.classList.add('active');
+      historyTab = t.dataset.htab;
+      renderHistory();
+    });
+  });
+});
+
+// Boot
+(async () => {
+  try {
+    const { data: { session } } = await supa.auth.getSession();
+    if (session) await onSignedIn(session.user);
+    else { hide($('loading')); show($('auth-screen')); checkForAppUpdates(); }
+  } catch (e) { surfaceFatal(e?.message || String(e), e?.stack); }
+})();
+
+// Service worker registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (sw) sw.addEventListener('statechange', () => {
+          if (sw.state === 'activated') console.log('SW activated');
+        });
+      });
+    }).catch(() => {});
+  });
+}
