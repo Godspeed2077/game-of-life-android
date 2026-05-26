@@ -236,6 +236,9 @@ async function onSignedIn(u) {
     loadTxns7(), loadStreaks(), loadBosses(), loadBalances(), loadRules(),
     loadReleases(), checkAdmin(), loadSubscription(), loadReferralCodes(), loadProfile(), loadAiUsage()
   ]);
+  // Refresh auto-tracked bosses (e.g. workout streak) so a missed day resets to 0.
+  await recomputeAutoBosses();
+  await loadBosses();
   // If user arrived with ?ref=CODE and is in trial, extend by 7 days
   await maybeApplyReferralOnSignin();
   render();
@@ -500,8 +503,26 @@ async function logWorkout(type, durationMin, calories, notes) {
   }).select().single();
   if (error) { toast('Save failed'); return; }
   await insertEvent('workout', 'manual', { type, duration_seconds: dur_s, calories, workout_id: wRow.id });
+  // Auto-update streak-tracked bosses (and fire boss-defeated XP if hit).
+  await recomputeAutoBosses();
   toast(`+${type} · ${durationMin} min`);
   await refreshAfterEvent();
+}
+
+// Recomputes hp_current on all auto-tracked bosses for the current user.
+// Called after logging a workout AND on app load (so missed days reset the streak).
+async function recomputeAutoBosses() {
+  if (!user) return;
+  try {
+    const { data, error } = await supa.rpc('recompute_workout_streak_bosses', { p_user_id: user.id });
+    if (error) { console.warn('recompute bosses failed', error); return; }
+    // If any bosses were newly defeated, surface a toast so the user knows
+    if (data && Array.isArray(data.bosses)) {
+      for (const b of data.bosses) {
+        if (b.newly_defeated) toast('🏆 Boss defeated: ' + b.name, 4000);
+      }
+    }
+  } catch (e) { console.warn('recompute bosses error', e); }
 }
 
 async function logMoney(dir, amount, category, merchant) {
@@ -1015,13 +1036,15 @@ function renderBosses() {
     const pct = Math.min(100, (Number(b.hp_current) / Math.max(1, Number(b.hp_total))) * 100);
     const el = document.createElement('div');
     el.className = `boss-item ${b.status === 'defeated' ? 'defeated' : ''}`;
+    const isAuto = !!b.auto_kind;
+    const autoLabel = b.auto_kind === 'workout_streak' ? '⚡ AUTO · workout streak' : (isAuto ? '⚡ AUTO' : '');
     el.innerHTML = `
       <div class="boss-head"><div class="boss-name"></div><div class="boss-reward">+${b.xp_reward} XP</div></div>
       <div class="boss-bar-wrap"><div class="boss-bar" style="width:${pct.toFixed(1)}%"></div></div>
       <div class="boss-meta">
-        <div class="boss-hp">${fmtHp(b.hp_current, b.hp_unit)} / ${fmtHp(b.hp_total, b.hp_unit)} (${pct.toFixed(0)}%)</div>
+        <div class="boss-hp">${fmtHp(b.hp_current, b.hp_unit)} / ${fmtHp(b.hp_total, b.hp_unit)} (${pct.toFixed(0)}%)${autoLabel ? ` <span style="color:var(--cyan); font-size:10px; letter-spacing:0.08em; margin-left:6px;">${autoLabel}</span>` : ''}</div>
         <div class="boss-actions">
-          ${b.status === 'active' ? `<button class="boss-action" data-act="add">+ HP</button>` : ''}
+          ${b.status === 'active' && !isAuto ? `<button class="boss-action" data-act="add">+ HP</button>` : ''}
           <button class="boss-action danger" data-act="del" title="Delete">✕</button>
         </div>
       </div>`;
@@ -1565,6 +1588,7 @@ $('hr-stop').addEventListener('click', async () => {
     duration_seconds: dur_s, avg_hr: avg, max_hr: max, calories: kcal
   }).select().single();
   await insertEvent('workout', 'bluetooth', { type, duration_seconds: dur_s, calories: kcal, avg_hr: avg, max_hr: max, workout_id: wRow?.id }, startedAt);
+  await recomputeAutoBosses();
   toast(`Saved · ${Math.floor(dur_s/60)} min · avg ${avg || '—'} bpm`);
   closeSheet();
   await refreshAfterEvent();
