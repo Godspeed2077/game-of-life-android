@@ -262,8 +262,9 @@ function showUpdateBanner(info) {
         btn.textContent = 'RETRY';
       }
     } else {
-      const url = info.download_url || 'https://gameoflifeapp.vercel.app/download.apk';
-      window.location.href = url;
+      // Always send to the canonical landing page — easy to type, no GitHub
+      // and no raw .apk URL. The page has Stable/Beta selectors.
+      window.location.href = 'https://forgepointrelay.com/?ref=app';
     }
   };
 }
