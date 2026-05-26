@@ -1761,6 +1761,14 @@ body::before {
       <label>XP reward when defeated</label>
       <input type="number" id="boss-xp" min="0" step="50" value="500" />
     </div>
+    <div class="field">
+      <label>Auto-tracking</label>
+      <select id="boss-auto-kind">
+        <option value="">Manual — I'll log progress with + HP</option>
+        <option value="workout_streak">Workout streak — consecutive days with a workout (auto-resets on a miss)</option>
+      </select>
+      <div id="boss-auto-help" style="font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4;"></div>
+    </div>
     <div class="sheet-actions">
       <button type="button" class="btn btn-ghost" data-close>Cancel</button>
       <button type="submit" class="btn">Add Boss</button>

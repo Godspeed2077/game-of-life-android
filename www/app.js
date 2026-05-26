@@ -1413,6 +1413,33 @@ $('connect-bank-btn').addEventListener('click', async () => {
 
 // Boss form
 $('add-boss-btn').addEventListener('click', () => openSheet('boss'));
+
+// React when the auto-tracking selector changes: lock HP unit to the right unit,
+// suggest a sensible target, and show a help blurb describing the rule.
+const AUTO_KIND_META = {
+  '': { help: '', unit: null, hp: null },
+  'workout_streak': {
+    help: 'HP = current consecutive-day workout streak. Logging any workout bumps it. Skipping a day resets it to 0. When HP hits target, boss is defeated.',
+    unit: 'days',
+    hp: 5
+  }
+};
+function applyAutoKindUI() {
+  const kind = $('boss-auto-kind').value || '';
+  const meta = AUTO_KIND_META[kind] || AUTO_KIND_META[''];
+  $('boss-auto-help').textContent = meta.help;
+  const unitSel = $('boss-unit');
+  const hpInput = $('boss-hp');
+  if (meta.unit) {
+    unitSel.value = meta.unit;
+    unitSel.disabled = true;
+  } else {
+    unitSel.disabled = false;
+  }
+  if (kind && !hpInput.value) hpInput.value = String(meta.hp);
+}
+$('boss-auto-kind').addEventListener('change', applyAutoKindUI);
+
 $('form-boss').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = $('boss-name').value.trim();
@@ -1420,11 +1447,24 @@ $('form-boss').addEventListener('submit', async (e) => {
   const hp = parseFloat($('boss-hp').value);
   const unit = $('boss-unit').value;
   const xp = parseInt($('boss-xp').value, 10) || 500;
+  const autoKind = $('boss-auto-kind').value || null;
   if (!name || !hp) return;
   closeSheet();
-  await supa.from('bosses').insert({ user_id: user.id, name, description: desc, hp_total: hp, hp_unit: unit, xp_reward: xp });
+  await supa.from('bosses').insert({
+    user_id: user.id, name, description: desc,
+    hp_total: hp, hp_unit: unit, xp_reward: xp,
+    auto_kind: autoKind
+  });
   toast('Boss added: ' + name);
-  await loadBosses(); renderBosses();
+  $('boss-name').value = '';
+  $('boss-desc').value = '';
+  $('boss-hp').value = '';
+  $('boss-xp').value = '500';
+  $('boss-auto-kind').value = '';
+  applyAutoKindUI();
+  await loadBosses();
+  if (autoKind) await recomputeAutoBosses();
+  renderBosses();
 });
 
 // Admin: release form
