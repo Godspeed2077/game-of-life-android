@@ -320,6 +320,7 @@ async function onSignedIn(u) {
   await maybeApplyReferralOnSignin();
   render();
   maybeOfferCheckin();
+  maybeOfferPush();
 }
 
 async function checkAdmin() {
@@ -1981,7 +1982,9 @@ $('hr-stop').addEventListener('click', async () => {
   await refreshAfterEvent();
 });
 
-// Push notifications
+// Push notifications — supports both Capacitor PushNotifications (FCM on Android)
+// and Web Push (PWA / iOS Safari / Chrome). Reads `kind` so the server can pick
+// the right delivery channel later.
 const VAPID_PUBLIC = 'BLdzQLOE0D2lT0i0JlVYku3cv-jxEbUSF1G1kV8l5jUZp6Hhxg1nhXC3ouM1NS0HmVwDXEINYTtfY7NVdB4tqWw';
 function urlBase64ToUint8Array(b64) {
   const padding = '='.repeat((4 - b64.length % 4) % 4);
@@ -1991,8 +1994,52 @@ function urlBase64ToUint8Array(b64) {
   for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
   return arr;
 }
-$('enable-push-btn').addEventListener('click', async () => {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) { toast('Push not supported'); return; }
+
+function pushPlatform() {
+  if (window.Capacitor?.getPlatform) {
+    try { return window.Capacitor.getPlatform(); } catch {}
+  }
+  if (/Android/.test(navigator.userAgent)) return 'android-pwa';
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent)) return 'ios-pwa';
+  return 'web';
+}
+
+async function enablePushCapacitor() {
+  // Use the @capacitor/push-notifications plugin if it's loaded in the APK.
+  const PN = window.Capacitor?.Plugins?.PushNotifications;
+  if (!PN) return false;
+  try {
+    let perm = await PN.checkPermissions();
+    if (perm.receive !== 'granted') perm = await PN.requestPermissions();
+    if (perm.receive !== 'granted') { toast('Notifications declined'); return true; }
+    // Wait for the registration token via the 'registration' event
+    const tokenPromise = new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('FCM registration timed out')), 15000);
+      PN.addListener('registration', (token) => { clearTimeout(t); resolve(token.value); });
+      PN.addListener('registrationError', (err) => { clearTimeout(t); reject(err); });
+    });
+    await PN.register();
+    const token = await tokenPromise;
+    const { error } = await supa.from('push_subscriptions').upsert({
+      user_id: user.id, endpoint: token, kind: 'fcm', platform: pushPlatform(),
+      user_agent: navigator.userAgent.slice(0, 200)
+    }, { onConflict: 'user_id,endpoint' });
+    if (error) { toast('Save failed: ' + error.message); return true; }
+    toast('Notifications enabled', 3000);
+    try { localStorage.setItem('pushEnabled', '1'); } catch {}
+    return true;
+  } catch (e) {
+    console.error('capacitor push failed', e);
+    toast('Push setup failed: ' + (e?.message || e));
+    return true;
+  }
+}
+
+async function enablePushWeb() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    toast('Push not supported on this device/browser');
+    return;
+  }
   const reg = await navigator.serviceWorker.ready;
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') { toast('Notifications declined'); return; }
@@ -2001,12 +2048,51 @@ $('enable-push-btn').addEventListener('click', async () => {
   const j = sub.toJSON();
   const { error } = await supa.from('push_subscriptions').upsert({
     user_id: user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
+    kind: 'web_push', platform: pushPlatform(),
     user_agent: navigator.userAgent.slice(0, 200)
   }, { onConflict: 'user_id,endpoint' });
   if (error) { toast('Save failed: ' + error.message); return; }
   toast('Notifications enabled. Sending test…');
+  try { localStorage.setItem('pushEnabled', '1'); } catch {}
   try { await supa.functions.invoke('send-push', { body: { title: 'Game of Life connected', body: 'Push notifications are live.', url: '/' } }); } catch {}
-});
+}
+
+async function enablePush() {
+  // Try Capacitor's native plugin first; fall back to Web Push.
+  const usedCapacitor = await enablePushCapacitor();
+  if (!usedCapacitor) await enablePushWeb();
+}
+
+$('enable-push-btn').addEventListener('click', enablePush);
+
+// First-launch prompt — appears once per device until the user enables or dismisses.
+function maybeOfferPush() {
+  try {
+    if (localStorage.getItem('pushEnabled') === '1') return;
+    if (localStorage.getItem('pushDismissed') === '1') return;
+    // Don't bug iOS PWA users who aren't in standalone (Web Push only works there)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandalone = (window.navigator.standalone === true) || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    if (isIOS && !isStandalone && !(window.Capacitor)) return;
+    // Defer to give the UI a chance to render
+    setTimeout(() => {
+      if (document.getElementById('push-prompt')) return;
+      const banner = document.createElement('div');
+      banner.id = 'push-prompt';
+      banner.style.cssText = 'position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:9996; background:linear-gradient(135deg,#1a1f2e,#232a3e); border:1px solid rgba(95,193,232,0.4); border-radius:14px; padding:14px 16px; box-shadow:0 10px 40px rgba(0,0,0,0.5); font-family:Inter,system-ui,sans-serif; color:#e8eaef; display:flex; align-items:center; gap:12px;';
+      banner.innerHTML = '<div style="font-size:24px;">🔔</div><div style="flex:1;min-width:0;"><div style="font-size:13px; font-weight:700; color:#5fc1e8; letter-spacing:0.04em;">Turn on reminders</div><div style="font-size:11px; color:#a4adc4; margin-top:3px; line-height:1.4;">Streak warnings · boss defeats · daily check-in nudges. Nothing else.</div></div><button id="push-prompt-enable" type="button" style="background:linear-gradient(135deg,#5fc1e8,#2d7ba3); color:#070912; border:none; padding:8px 14px; border-radius:8px; font-family:Cinzel,serif; font-size:11px; letter-spacing:0.12em; font-weight:700; cursor:pointer; white-space:nowrap;">ENABLE</button><button id="push-prompt-dismiss" type="button" aria-label="Dismiss" style="background:transparent; border:none; color:#8b94b8; font-size:22px; line-height:1; cursor:pointer; padding:0 4px;">×</button>';
+      document.body.appendChild(banner);
+      document.getElementById('push-prompt-enable').addEventListener('click', async () => {
+        banner.remove();
+        await enablePush();
+      });
+      document.getElementById('push-prompt-dismiss').addEventListener('click', () => {
+        banner.remove();
+        try { localStorage.setItem('pushDismissed', '1'); } catch {}
+      });
+    }, 4000);
+  } catch (e) { console.warn('maybeOfferPush failed', e); }
+}
 
 
 // Profile / friends
