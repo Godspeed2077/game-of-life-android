@@ -628,10 +628,28 @@ function openHelpSheet() {
   // Stamp build version into the about line
   const v = document.getElementById('help-build-version');
   if (v) v.textContent = (window.BUILD_VERSION || 'PWA') + (window.BUILD_TIME ? (' (' + new Date(window.BUILD_TIME).toLocaleDateString() + ')') : '');
-  // Show the sheet (existing openSheet handles overlay + animation)
-  openSheet('help');
-  // Lazy-load the user's past feedback so they can see status of bugs they've filed
+  // Help sheet is a self-contained dialog (not the multi-form #sheet element).
+  // Show it + the backdrop directly.
+  const helpEl = document.getElementById('sheet-help');
+  const backdrop = document.getElementById('sheet-backdrop');
+  if (helpEl) {
+    helpEl.classList.remove('hidden');
+    helpEl.classList.add('show');
+    helpEl.style.display = '';
+  }
+  if (backdrop) backdrop.classList.add('show');
+  // Lazy-load past feedback
   if (user) loadMyFeedback();
+}
+
+function closeHelpSheet() {
+  const helpEl = document.getElementById('sheet-help');
+  const backdrop = document.getElementById('sheet-backdrop');
+  if (helpEl) {
+    helpEl.classList.remove('show');
+    helpEl.classList.add('hidden');
+  }
+  if (backdrop) backdrop.classList.remove('show');
 }
 
 async function loadMyFeedback() {
@@ -2511,6 +2529,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const helpBtn = document.getElementById('help-btn');
   if (helpBtn) helpBtn.addEventListener('click', openHelpSheet);
 
+  // Close handlers for the help sheet (its own × button + backdrop tap + Escape)
+  const helpSheetEl = document.getElementById('sheet-help');
+  if (helpSheetEl) {
+    helpSheetEl.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeHelpSheet));
+    helpSheetEl.querySelectorAll('.sheet-close').forEach(b => b.addEventListener('click', closeHelpSheet));
+  }
+  document.getElementById('sheet-backdrop')?.addEventListener('click', () => {
+    // If help is open, close it; otherwise the existing sheet logic handles it
+    if (helpSheetEl && helpSheetEl.classList.contains('show')) closeHelpSheet();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && helpSheetEl && helpSheetEl.classList.contains('show')) closeHelpSheet();
+  });
+
   // Share button inside the help sheet
   const helpShare = document.getElementById('help-share-btn');
   if (helpShare) helpShare.addEventListener('click', () => shareApp());
@@ -2518,8 +2550,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Replay onboarding tour from the help sheet
   const helpReplay = document.getElementById('help-replay-tour');
   if (helpReplay) helpReplay.addEventListener('click', () => {
-    // Close help sheet first, then open onboarding
-    closeSheet();
+    closeHelpSheet();
     setTimeout(() => showOnboarding(true), 200);
   });
 
