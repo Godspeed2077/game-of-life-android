@@ -174,6 +174,10 @@ $('logout-btn').addEventListener('click', async () => {
 // BUILD_VERSION is injected by GitHub Actions at APK build time.
 // PWA users have it as null, so the check no-ops for them.
 async function checkForAppUpdates() {
+  // Hot-updates are now handled by the standard Service Worker flow at the
+  // bottom of this file. Capgo / link-token / bundle download are removed.
+  return;
+  // (Old Capgo-based logic kept below for reference; unreachable.)
   if (!window.BUILD_VERSION) return; // PWA — service worker handles updates
   try {
     const cap = window.Capacitor;
@@ -2595,16 +2599,61 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (e) { surfaceFatal(e?.message || String(e), e?.stack); }
 })();
 
-// Service worker registration
+// === Service-worker update flow (Claude-style) ===
+// New code is downloaded silently in the background. When a new SW is installed
+// and waiting, show a banner offering "Apply update" — tap to skipWaiting +
+// reload. No rollback ever, because there's no native plugin trying to roll
+// back. The web is the source of truth.
+function showSwUpdateBanner(waitingSw) {
+  if (document.getElementById('update-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'update-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#f5c842,#b89531);color:#070912;padding:calc(12px + env(safe-area-inset-top, 0px)) 16px 12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 24px rgba(0,0,0,0.55);font-family:Inter,system-ui,sans-serif;border-bottom:1px solid rgba(0,0,0,0.2);';
+  banner.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;">New version available</div><div style="font-size:11px;opacity:0.8;">Tap to apply. Saves your progress, no reinstall.</div></div><button id="sw-apply" style="background:#070912;color:#f5c842;border:none;padding:8px 14px;border-radius:8px;font-family:Cinzel,serif;font-size:11px;letter-spacing:0.12em;font-weight:700;cursor:pointer;min-width:80px;">UPDATE</button><button id="sw-dismiss" style="background:transparent;color:#070912;border:none;padding:4px 8px;cursor:pointer;font-size:20px;line-height:1;">×</button>';
+  document.body.appendChild(banner);
+  document.getElementById('sw-apply').onclick = () => {
+    if (waitingSw) waitingSw.postMessage({ type: 'SKIP_WAITING' });
+    // Wait for the new SW to activate, then reload
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    }, { once: true });
+  };
+  document.getElementById('sw-dismiss').onclick = () => {
+    banner.remove();
+    try { localStorage.setItem('swUpdateDismissedAt', String(Date.now())); } catch {}
+  };
+}
+
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      // Periodic background check — every 60 min while app is open
+      setInterval(() => { try { reg.update(); } catch {} }, 60 * 60 * 1000);
+
+      // If a new SW is already waiting (came in while app was closed)
+      if (reg.waiting) {
+        const dismissedAt = parseInt(localStorage.getItem('swUpdateDismissedAt') || '0', 10);
+        if (!dismissedAt || (Date.now() - dismissedAt) > 12 * 3600 * 1000) {
+          showSwUpdateBanner(reg.waiting);
+        }
+      }
+      // Or one is installing right now
       reg.addEventListener('updatefound', () => {
         const sw = reg.installing;
-        if (sw) sw.addEventListener('statechange', () => {
-          if (sw.state === 'activated') console.log('SW activated');
+        if (!sw) return;
+        sw.addEventListener('statechange', () => {
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            // A new version is ready. Only show banner if user hasn't dismissed recently.
+            const dismissedAt = parseInt(localStorage.getItem('swUpdateDismissedAt') || '0', 10);
+            if (!dismissedAt || (Date.now() - dismissedAt) > 12 * 3600 * 1000) {
+              showSwUpdateBanner(sw);
+            } else {
+              console.log('SW update available but dismissed recently — silent install on next launch');
+            }
+          }
         });
       });
-    }).catch(() => {});
+    } catch (e) { console.warn('SW register failed', e); }
   });
 }

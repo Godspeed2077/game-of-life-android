@@ -1,5 +1,7 @@
-// Game of Life service worker
-const CACHE = 'game101-v26';
+// Game of Life service worker — Claude-style update flow.
+// New SW installs in the background. Client posts {type:'SKIP_WAITING'} when
+// the user taps "Update", we skipWaiting + claim, page reloads → new version.
+const CACHE = 'game101-v40';
 const ASSETS = [
   '/',
   '/index.html',
@@ -9,28 +11,34 @@ const ASSETS = [
   '/manifest.json',
   '/icon.svg',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/game-of-life-mark.svg'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(ASSETS).catch(() => {}))
   );
-  self.skipWaiting();
+  // DO NOT auto-skipWaiting — wait for the client to message us, so the
+  // user has a chance to dismiss/postpone the update banner.
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  // Skip non-GET, cross-origin third-party APIs we never want to cache
   if (req.method !== 'GET') return;
   if (req.url.includes('supabase.co') || req.url.includes('esm.sh') || req.url.includes('cdn.plaid.com') || req.url.includes('fonts.googleapis.com') || req.url.includes('fonts.gstatic.com')) return;
 
