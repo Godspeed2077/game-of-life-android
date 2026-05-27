@@ -284,6 +284,29 @@ async function onSignedIn(u) {
       character.timezone = tz;
     }
   } catch {}
+  // Replay any pending Plaid public_token that failed to exchange last time
+  try {
+    const pending = localStorage.getItem('plaidPendingToken');
+    if (pending) {
+      const obj = JSON.parse(pending);
+      if (obj && obj.publicToken && (Date.now() - obj.ts < 30 * 60 * 1000)) {
+        console.log('Recovering pending Plaid public_token from previous session…');
+        supa.functions.invoke('plaid-exchange', { body: { public_token: obj.publicToken, institution: obj.institution || null } })
+          .then(({ data, error }) => {
+            if (data && data.ok) {
+              try { localStorage.removeItem('plaidPendingToken'); } catch {}
+              toast('Recovered bank connection: ' + (data.institution_name || ''), 4000);
+              loadConnections().then(() => refreshAfterEvent());
+            } else {
+              console.warn('Recovery exchange failed', error || data);
+              try { localStorage.removeItem('plaidPendingToken'); } catch {}
+            }
+          });
+      } else {
+        try { localStorage.removeItem('plaidPendingToken'); } catch {}
+      }
+    }
+  } catch (e) { console.warn('plaid recovery failed', e); }
   await Promise.all([
     loadQuests(), loadSummary(),
     loadEmails(), loadTxns(), loadConnections(),
@@ -1611,18 +1634,55 @@ $('connect-bank-btn').addEventListener('click', async () => {
     catch { toast('Plaid blocked: allow cdn.plaid.com'); return; }
     const { data, error } = await supa.functions.invoke('plaid-link-token', { body: {} });
     if (error || !data?.link_token) { toast(data?.error || error?.message || 'Plaid not configured'); return; }
+    // Track the most recent public_token so a flaky WebView round-trip
+    // doesn't lose it (we save it to localStorage as a defensive backup,
+    // and the bank-connect UI can recover by replaying it).
+    const completeExchange = async (publicToken, metadata) => {
+      try {
+        toast('Linking ' + (metadata?.institution?.name || 'bank') + '…');
+        try { localStorage.setItem('plaidPendingToken', JSON.stringify({ publicToken, institution: metadata?.institution || null, ts: Date.now() })); } catch {}
+        const { data: ex, error: exErr } = await supa.functions.invoke('plaid-exchange', {
+          body: { public_token: publicToken, institution: metadata?.institution || null }
+        });
+        if (exErr || !ex?.ok) {
+          console.error('plaid-exchange failed', exErr || ex);
+          toast('Link failed: ' + (ex?.error || exErr?.message || 'unknown'), 6000);
+          return;
+        }
+        try { localStorage.removeItem('plaidPendingToken'); } catch {}
+        toast(`Connected ${ex.institution_name || ''} · ${ex.accounts} accounts. Syncing…`);
+        const { data: sync, error: syncErr } = await supa.functions.invoke('plaid-sync', { body: {} });
+        if (syncErr) console.error('plaid-sync error', syncErr);
+        toast(`+${sync?.txn_added || 0} transactions, ${sync?.balance_updates || 0} balances`, 5000);
+        await loadConnections(); await refreshAfterEvent();
+      } catch (e) {
+        console.error('completeExchange threw', e);
+        toast('Exchange failed: ' + (e?.message || e), 6000);
+      }
+    };
+
     const handler = Plaid.create({
       token: data.link_token,
       onSuccess: async (publicToken, metadata) => {
-        toast('Linking ' + (metadata?.institution?.name || 'bank') + '…');
-        const { data: ex, error: exErr } = await supa.functions.invoke('plaid-exchange', { body: { public_token: publicToken, institution: metadata?.institution || null } });
-        if (exErr || !ex?.ok) { toast('Link failed: ' + (ex?.error || exErr?.message || 'unknown')); return; }
-        toast(`Connected ${ex.institution_name || ''} · ${ex.accounts} accounts. Syncing…`);
-        const { data: sync } = await supa.functions.invoke('plaid-sync', { body: {} });
-        toast(`+${sync?.txn_added || 0} transactions, ${sync?.balance_updates || 0} balances`);
-        await loadConnections(); await refreshAfterEvent();
+        console.log('Plaid onSuccess', { hasToken: !!publicToken, inst: metadata?.institution?.name });
+        await completeExchange(publicToken, metadata);
       },
-      onExit: (err) => { if (err) console.warn('Plaid exit', err); }
+      onExit: (err, metadata) => {
+        // err is non-null only when Plaid Link errored out. metadata.status tells
+        // us where the user bailed (institution_not_found, etc.).
+        if (err) {
+          console.warn('Plaid onExit error', err, metadata);
+          toast('Plaid: ' + (err.display_message || err.error_message || err.error_code || 'exited'), 5000);
+        } else {
+          console.log('Plaid onExit (no error)', metadata);
+        }
+      },
+      onEvent: (eventName, metadata) => {
+        console.log('Plaid event:', eventName, metadata?.view_name || '');
+        // The HANDOFF event fires right before onSuccess. If we see HANDOFF but
+        // never onSuccess, that's the Capacitor-WebView postMessage drop.
+        if (eventName === 'HANDOFF') console.log('Plaid HANDOFF — onSuccess should fire next');
+      }
     });
     handler.open();
   } catch (e) { toast('Plaid error'); console.error(e); }
