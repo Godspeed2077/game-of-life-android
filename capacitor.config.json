@@ -25,7 +25,7 @@
       "autoUpdate": false,
       "directUpdate": false,
       "responseTimeout": 30,
-      "appReadyTimeout": 60000
+      "appReadyTimeout": 300000
     }
   }
 }
