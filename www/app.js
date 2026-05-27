@@ -215,6 +215,15 @@ async function checkForAppUpdates() {
 
 function showUpdateBanner(info) {
   if (document.getElementById('update-banner')) return;
+  // If user already dismissed this exact version recently (12h), don't re-show.
+  try {
+    const dismissedAt = parseInt(localStorage.getItem('updateBannerDismissedAt') || '0', 10);
+    const dismissedFor = localStorage.getItem('updateBannerDismissedFor') || '';
+    if (dismissedAt && dismissedFor === (info.version || '') && (Date.now() - dismissedAt < 12 * 3600 * 1000)) {
+      // Honor the user's dismissal for 12h, then re-nag.
+      return;
+    }
+  } catch {}
   const cap = window.Capacitor;
   const updater = cap && cap.Plugins && cap.Plugins.CapacitorUpdater;
   // Force APK download when the previous hot-update rolled back. Capgo's safety
@@ -223,7 +232,7 @@ function showUpdateBanner(info) {
   const canHotUpdate = !!(updater && updater.download && info.bundle_url) && !info._forceApkFallback;
   const banner = document.createElement('div');
   banner.id = 'update-banner';
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#f5c842,#b89531);color:#070912;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(245,200,66,0.4);font-family:Inter,system-ui,sans-serif;';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#f5c842,#b89531);color:#070912;padding:calc(12px + env(safe-area-inset-top, 0px)) 16px 12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 24px rgba(0,0,0,0.55);font-family:Inter,system-ui,sans-serif;border-bottom:1px solid rgba(0,0,0,0.2);';
   const versionText = (info.version || 'new build');
   const subline = canHotUpdate ? 'Tap to download the latest update.' : (info._forceApkFallback ? 'Previous in-place update got rolled back — installing the APK directly fixes it permanently.' : 'Tap to download the latest APK.');
   banner.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;">New version available — ' + versionText + '</div><div id="update-sub" style="font-size:11px;opacity:0.8;">' + subline + '</div></div><button id="update-now" style="background:#070912;color:#f5c842;border:none;padding:8px 14px;border-radius:8px;font-family:Cinzel,serif;font-size:11px;letter-spacing:0.12em;font-weight:700;cursor:pointer;min-width:80px;">UPDATE</button><button id="update-dismiss" style="background:transparent;color:#070912;border:none;padding:4px 8px;cursor:pointer;font-size:20px;line-height:1;">×</button>';
@@ -231,7 +240,13 @@ function showUpdateBanner(info) {
   const btn = document.getElementById('update-now');
   const sub = document.getElementById('update-sub');
   const dismiss = document.getElementById('update-dismiss');
-  dismiss.onclick = () => banner.remove();
+  dismiss.onclick = () => {
+    banner.remove();
+    try {
+      localStorage.setItem('updateBannerDismissedAt', String(Date.now()));
+      localStorage.setItem('updateBannerDismissedFor', info.version || '');
+    } catch {}
+  };
   btn.onclick = async () => {
     if (canHotUpdate) {
       btn.disabled = true;
@@ -2012,7 +2027,15 @@ function pushPlatform() {
 // service worker — no Firebase needed.
 async function enablePushWeb() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    toast('Push not supported on this device/browser');
+    // Tell the user *why* instead of the generic message. On Capacitor APKs
+    // running on GrapheneOS without Google services, the WebView's push backend
+    // is absent. Web Push works in: iOS PWA, Android Chrome, regular Android
+    // Chrome System WebView (with Google services), desktop browsers.
+    const inCapacitor = !!window.Capacitor?.isNativePlatform?.();
+    const why = inCapacitor
+      ? 'Push not available in this APK (likely no Google services on the device). The in-app reminders still work whenever the app is open. For background notifications, install the PWA version from forgepointrelay.com in your browser.'
+      : 'Push not supported on this device/browser. Install the app to your home screen (Safari → Share → Add to Home Screen on iPhone, or Chrome → Install on Android) and try again.';
+    toast(why, 8000);
     return;
   }
   const reg = await navigator.serviceWorker.ready;
