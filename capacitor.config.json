@@ -20,12 +20,11 @@
         "sound",
         "alert"
       ]
-    },
-    "CapacitorUpdater": {
-      "autoUpdate": false,
-      "directUpdate": false,
-      "responseTimeout": 30,
-      "appReadyTimeout": 300000
     }
+  },
+  "server": {
+    "url": "https://gameoflifeapp.vercel.app",
+    "cleartext": false,
+    "androidScheme": "https"
   }
 }
