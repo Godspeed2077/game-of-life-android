@@ -414,8 +414,8 @@ async function loadTxns() {
 
 async function loadConnections() {
   const [connRes, plaidRes] = await Promise.all([
-    supa.from('connections').select('id,provider,status,external_id,config,last_sync_at,last_error,created_at').eq('user_id', user.id),
-    supa.from('plaid_items').select('id,institution_name,institution_id,status,last_sync_at,last_error,created_at').eq('user_id', user.id)
+    supa.from('connections').select('id,provider,status,external_id,config,last_sync_at,last_error,created_at').eq('user_id', user.id).neq('status', 'removed'),
+    supa.from('plaid_items').select('id,institution_name,institution_id,status,last_sync_at,last_error,created_at').eq('user_id', user.id).neq('status', 'removed')
   ]);
   connections = [
     ...((connRes.data || []).filter(c => c.provider !== 'anthropic')),
