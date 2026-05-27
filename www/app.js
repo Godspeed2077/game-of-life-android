@@ -1082,7 +1082,7 @@ function render() {
   }
   // Per-domain bars (only updates DOM if user has expanded the panel — render anyway for snappy expand)
   if (progress && progress.domains) {
-    for (const d of ['body','mind','money','social']) {
+    for (const d of ['body','mind','money']) {
       const dom = progress.domains[d];
       if (!dom) continue;
       const tierEl = document.getElementById('d-' + d + '-tier');
