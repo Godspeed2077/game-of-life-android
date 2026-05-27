@@ -2004,37 +2004,12 @@ function pushPlatform() {
   return 'web';
 }
 
-async function enablePushCapacitor() {
-  // Use the @capacitor/push-notifications plugin if it's loaded in the APK.
-  const PN = window.Capacitor?.Plugins?.PushNotifications;
-  if (!PN) return false;
-  try {
-    let perm = await PN.checkPermissions();
-    if (perm.receive !== 'granted') perm = await PN.requestPermissions();
-    if (perm.receive !== 'granted') { toast('Notifications declined'); return true; }
-    // Wait for the registration token via the 'registration' event
-    const tokenPromise = new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('FCM registration timed out')), 15000);
-      PN.addListener('registration', (token) => { clearTimeout(t); resolve(token.value); });
-      PN.addListener('registrationError', (err) => { clearTimeout(t); reject(err); });
-    });
-    await PN.register();
-    const token = await tokenPromise;
-    const { error } = await supa.from('push_subscriptions').upsert({
-      user_id: user.id, endpoint: token, kind: 'fcm', platform: pushPlatform(),
-      user_agent: navigator.userAgent.slice(0, 200)
-    }, { onConflict: 'user_id,endpoint' });
-    if (error) { toast('Save failed: ' + error.message); return true; }
-    toast('Notifications enabled', 3000);
-    try { localStorage.setItem('pushEnabled', '1'); } catch {}
-    return true;
-  } catch (e) {
-    console.error('capacitor push failed', e);
-    toast('Push setup failed: ' + (e?.message || e));
-    return true;
-  }
-}
-
+// NOTE: We deliberately do NOT use @capacitor/push-notifications. That plugin
+// requires Firebase Cloud Messaging to be configured (google-services.json,
+// google-services Gradle plugin). Without Firebase, calling .register() crashes
+// the entire APK with "Default FirebaseApp is not initialized". We rely on the
+// standard Web Push API, which works in modern Android System WebView via the
+// service worker — no Firebase needed.
 async function enablePushWeb() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     toast('Push not supported on this device/browser');
@@ -2058,9 +2033,8 @@ async function enablePushWeb() {
 }
 
 async function enablePush() {
-  // Try Capacitor's native plugin first; fall back to Web Push.
-  const usedCapacitor = await enablePushCapacitor();
-  if (!usedCapacitor) await enablePushWeb();
+  // Web Push only — see comment above enablePushWeb for why.
+  await enablePushWeb();
 }
 
 $('enable-push-btn').addEventListener('click', enablePush);
