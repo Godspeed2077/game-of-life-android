@@ -1768,7 +1768,7 @@ $('form-checkin').addEventListener('submit', async (e) => {
   const questText = $('ci-quest').value.trim();
   const notes = $('ci-notes').value.trim();
   closeSheet();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalDateStr();
   await supa.from('vitals').insert({ user_id: user.id, kind: 'sleep_score', value: sleep, unit: 'self_1to5', source: 'checkin', occurred_at: new Date().toISOString() });
   await supa.from('vitals').insert({ user_id: user.id, kind: 'body_score', value: body, unit: 'self_1to5', source: 'checkin', occurred_at: new Date().toISOString() });
   if (questText) await supa.from('quests').insert({ user_id: user.id, title: questText, type: 'daily', xp_reward: 50 });
@@ -1780,12 +1780,59 @@ $('form-checkin').addEventListener('submit', async (e) => {
   await Promise.all([loadQuests(), loadStreaks()]);
   render();
 });
-function maybeOfferCheckin() {
+// Returns YYYY-MM-DD in the user's local timezone (falls back to device TZ)
+function todayLocalDateStr() {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const tz = (character && character.timezone) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    // sv-SE locale gives YYYY-MM-DD naturally
+    return new Date().toLocaleDateString('sv-SE', { timeZone: tz });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+async function maybeOfferCheckin() {
+  try {
+    const today = todayLocalDateStr();
+    // 1. Cheap localStorage early-out (submitted or dismissed today on this device)
     const last = localStorage.getItem('lastCheckin');
-    if (last !== today) setTimeout(() => openSheet('checkin'), 600);
-  } catch {}
+    if (last === today) return;
+    // 2. Authoritative DB check — has the user logged a sleep_score vital today (in their TZ)?
+    if (user) {
+      const tz = (character && character.timezone) || 'UTC';
+      // Pull the most recent sleep_score vital and compare its local date with today
+      const { data } = await supa.from('vitals')
+        .select('occurred_at')
+        .eq('user_id', user.id)
+        .eq('kind', 'sleep_score')
+        .order('occurred_at', { ascending: false })
+        .limit(1);
+      if (data && data.length) {
+        const lastLocal = new Date(data[0].occurred_at).toLocaleDateString('sv-SE', { timeZone: tz });
+        if (lastLocal === today) {
+          // Already checked in today — remember so we don't query again this session
+          try { localStorage.setItem('lastCheckin', today); } catch {}
+          return;
+        }
+      }
+    }
+    // 3. Show the sheet, and remember dismissal so swiping it away doesn't re-nag
+    setTimeout(() => {
+      openSheet('checkin');
+      // When the sheet is dismissed (any way other than submit), mark today so we don't pop again.
+      // The submit handler already sets lastCheckin; this covers dismissal.
+      const sheet = document.getElementById('sheet-checkin');
+      if (sheet) {
+        const observer = new MutationObserver(() => {
+          if (sheet.classList.contains('hidden')) {
+            try { localStorage.setItem('lastCheckin', today); } catch {}
+            observer.disconnect();
+          }
+        });
+        observer.observe(sheet, { attributes: true, attributeFilter: ['class'] });
+      }
+    }, 600);
+  } catch (e) { console.warn('maybeOfferCheckin error', e); }
 }
 
 // AI Suggest quests
