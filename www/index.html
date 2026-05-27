@@ -1170,13 +1170,48 @@ body::before {
 
 /* Hidden state */
 .hidden { display: none !important; }
+.loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 100vh; gap: 18px; padding-top: env(safe-area-inset-top);
+}
+.loading-shield {
+  width: 96px; height: 96px;
+  filter: drop-shadow(0 0 16px rgba(245,200,66,0.35));
+  animation: gol-shield-pulse 1.8s ease-in-out infinite;
+}
+.loading-shield img { width: 100%; height: 100%; }
+.loading-label {
+  letter-spacing: 0.3em; color: var(--gold); font-size: 13px;
+  font-family: 'Cinzel', serif; font-weight: 600;
+}
+.loading-dots { display: flex; gap: 6px; }
+.loading-dots span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--gold);
+  opacity: 0.25;
+  animation: gol-dots 1.4s ease-in-out infinite;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.18s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes gol-shield-pulse {
+  0%, 100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 12px rgba(245,200,66,0.25)); }
+  50% { transform: scale(1.08) rotate(-2deg); filter: drop-shadow(0 0 24px rgba(245,200,66,0.55)); }
+}
+@keyframes gol-dots {
+  0%, 100% { opacity: 0.2; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+
 </style>
 </head>
 <body>
 
 <!-- Loading -->
 <div id="loading" class="loading">
-  <div class="serif" style="letter-spacing: 0.3em; color: var(--gold);">LOADING...</div>
+  <div class="loading-shield">
+    <img src="/game-of-life-mark.svg" alt="Game of Life" />
+  </div>
+  <div class="serif loading-label">LOADING</div>
+  <div class="loading-dots"><span></span><span></span><span></span></div>
 </div>
 
 <!-- Landing / Auth screen (logged-out view) -->

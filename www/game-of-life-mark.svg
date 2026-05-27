@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbe26a"/>
+      <stop offset="48%" stop-color="#f5c842"/>
+      <stop offset="100%" stop-color="#9c7a1e"/>
+    </linearGradient>
+    <linearGradient id="goldDeep" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3b2d0e"/>
+      <stop offset="100%" stop-color="#1a1304"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff6c8" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#fff6c8" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="2"/></filter>
+  </defs>
+
+  <!-- Outer shield silhouette -->
+  <path d="M100 8 L184 30 L184 102 Q184 168 100 192 Q16 168 16 102 L16 30 Z"
+        fill="url(#goldDeep)" stroke="url(#gold)" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- Inner bevel ring -->
+  <path d="M100 22 L172 41 L172 102 Q172 156 100 178 Q28 156 28 102 L28 41 Z"
+        fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.55"/>
+
+  <!-- Crossed-strike accents (the 'point' in ForgePoint) -->
+  <path d="M52 55 L88 91 M148 55 L112 91" stroke="url(#gold)" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- The G — serif, custom-drawn -->
+  <g transform="translate(100 112)">
+    <!-- Main C-loop -->
+    <path d="M0 -54
+             A 54 54 0 1 0 38 38
+             L 38 -2
+             L 4 -2
+             L 4 16
+             L 22 16
+             A 32 32 0 1 1 0 -32
+             A 32 32 0 0 1 26 -18
+             L 44 -34
+             A 54 54 0 0 0 0 -54 Z"
+          fill="url(#gold)" stroke="#5a3f0c" stroke-width="1.5" stroke-linejoin="round"/>
+    <!-- Highlight -->
+    <path d="M0 -50 A 50 50 0 0 0 -38 -16"
+          fill="none" stroke="url(#shine)" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  </g>
+
+  <!-- Subtle inner glow above the G -->
+  <ellipse cx="100" cy="68" rx="60" ry="10" fill="url(#shine)" opacity="0.18" filter="url(#glow)"/>
+</svg>
