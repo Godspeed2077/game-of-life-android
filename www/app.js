@@ -336,6 +336,7 @@ async function onSignedIn(u) {
   render();
   maybeOfferCheckin();
   maybeOfferPush();
+  showOnboarding(false);
 }
 
 async function checkAdmin() {
@@ -1856,6 +1857,63 @@ $('form-checkin').addEventListener('submit', async (e) => {
   await Promise.all([loadQuests(), loadStreaks()]);
   render();
 });
+// === Onboarding tour ===
+let onbStep = 1;
+const ONB_TOTAL = 5;
+
+function showOnboarding(forceReplay) {
+  if (!forceReplay && character && character.onboarding_completed_at) return; // already done
+  onbStep = 1;
+  renderOnboardingStep();
+  const el = document.getElementById('onboarding');
+  if (el) el.classList.remove('hidden');
+}
+
+function renderOnboardingStep() {
+  document.querySelectorAll('#onboarding .onb-step').forEach((el) => {
+    const n = parseInt(el.dataset.step, 10);
+    el.classList.toggle('hidden', n !== onbStep);
+  });
+  const dots = document.getElementById('onb-dots');
+  if (dots) {
+    dots.innerHTML = '';
+    for (let i = 1; i <= ONB_TOTAL; i++) {
+      const s = document.createElement('span');
+      if (i === onbStep) s.classList.add('on');
+      dots.appendChild(s);
+    }
+  }
+  const prev = document.getElementById('onb-prev');
+  const next = document.getElementById('onb-next');
+  if (prev) prev.disabled = onbStep === 1;
+  if (next) next.textContent = (onbStep === ONB_TOTAL) ? "Let's go" : 'Next →';
+}
+
+async function completeOnboarding() {
+  document.getElementById('onboarding')?.classList.add('hidden');
+  if (user) {
+    try {
+      await supa.from('characters').update({ onboarding_completed_at: new Date().toISOString() }).eq('user_id', user.id);
+      if (character) character.onboarding_completed_at = new Date().toISOString();
+    } catch (e) { console.warn('mark onboarding done failed', e); }
+  }
+}
+
+// Wire onboarding buttons once DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const next = document.getElementById('onb-next');
+  const prev = document.getElementById('onb-prev');
+  const skip = document.getElementById('onb-skip');
+  if (next) next.addEventListener('click', () => {
+    if (onbStep < ONB_TOTAL) { onbStep++; renderOnboardingStep(); }
+    else completeOnboarding();
+  });
+  if (prev) prev.addEventListener('click', () => {
+    if (onbStep > 1) { onbStep--; renderOnboardingStep(); }
+  });
+  if (skip) skip.addEventListener('click', completeOnboarding);
+});
+
 // Returns YYYY-MM-DD in the user's local timezone (falls back to device TZ)
 function todayLocalDateStr() {
   try {
@@ -2456,6 +2514,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Share button inside the help sheet
   const helpShare = document.getElementById('help-share-btn');
   if (helpShare) helpShare.addEventListener('click', () => shareApp());
+
+  // Replay onboarding tour from the help sheet
+  const helpReplay = document.getElementById('help-replay-tour');
+  if (helpReplay) helpReplay.addEventListener('click', () => {
+    // Close help sheet first, then open onboarding
+    closeSheet();
+    setTimeout(() => showOnboarding(true), 200);
+  });
 
   // Feedback form submit
   const fbForm = document.getElementById('form-feedback');
