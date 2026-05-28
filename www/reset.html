@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Reset password — Game of Life</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<style>
+  :root {
+    --bg: #070912;
+    --card: #0e1326;
+    --text: #e8eaef;
+    --muted: #8b94b8;
+    --gold: #f5c842;
+    --cyan: #5fc1e8;
+    --green: #6ee7a8;
+    --red: #ff8a8a;
+    --border: rgba(245, 200, 66, 0.4);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: radial-gradient(circle at top, #11172b 0%, #070912 60%);
+    color: var(--text);
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .wrap {
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 420px;
+    background: linear-gradient(135deg, #14192f, #0e1326);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 32px 26px;
+    box-shadow: 0 16px 60px rgba(0,0,0,0.6);
+  }
+  .shield {
+    width: 64px; height: 64px;
+    margin: 0 auto 14px;
+    display: block;
+  }
+  .brand {
+    text-align: center;
+    font-family: 'Cinzel', Georgia, serif;
+    font-size: 20px; letter-spacing: 0.12em;
+    color: var(--gold);
+    margin-bottom: 4px;
+  }
+  .sub {
+    text-align: center;
+    font-size: 13px; color: var(--muted);
+    margin-bottom: 24px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  h1 { font-size: 18px; margin: 0 0 6px; text-align: center; }
+  p.intro { font-size: 13px; color: var(--muted); margin: 0 0 18px; text-align: center; }
+  input {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(95, 193, 232, 0.25);
+    background: rgba(7, 9, 18, 0.6);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    margin-bottom: 12px;
+  }
+  input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(95,193,232,0.15); }
+  button.primary {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, var(--gold), #b89531);
+    color: #070912;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .msg { margin-top: 14px; font-size: 13px; text-align: center; min-height: 18px; }
+  .msg.error { color: var(--red); }
+  .msg.success { color: var(--green); }
+  .msg.info { color: var(--cyan); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: -4px; margin-bottom: 12px; }
+  .footer { text-align: center; margin-top: 18px; font-size: 12px; color: var(--muted); }
+  .footer a { color: var(--cyan); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <svg class="shield" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f5c842"/>
+          <stop offset="100%" stop-color="#b89531"/>
+        </linearGradient>
+      </defs>
+      <path d="M50 8 L88 22 L88 52 Q88 78 50 92 Q12 78 12 52 L12 22 Z"
+            fill="url(#g)" stroke="#070912" stroke-width="2"/>
+      <text x="50" y="64" font-family="Cinzel, Georgia, serif" font-weight="700"
+            font-size="44" text-anchor="middle" fill="#070912">G</text>
+    </svg>
+    <div class="brand">GAME OF LIFE</div>
+    <div class="sub">Account Recovery</div>
+
+    <div id="ready-state" style="display:none;">
+      <h1>Set a new password</h1>
+      <p class="intro">Enter your new password below. Minimum 6 characters.</p>
+      <input id="pw1" type="password" autocomplete="new-password" placeholder="New password" minlength="6" />
+      <input id="pw2" type="password" autocomplete="new-password" placeholder="Confirm new password" minlength="6" />
+      <div class="hint" id="pw-hint">At least 6 characters. Both fields must match.</div>
+      <button class="primary" id="save-btn" disabled>Save new password</button>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div id="loading-state">
+      <h1>Verifying link…</h1>
+      <p class="intro">One moment.</p>
+    </div>
+
+    <div id="error-state" style="display:none;">
+      <h1>Link not valid</h1>
+      <p class="intro" id="error-text">This reset link is invalid or has expired. Please request a new one from the sign-in screen.</p>
+      <button class="primary" onclick="location.href='/'">Back to sign in</button>
+    </div>
+
+    <div id="success-state" style="display:none;">
+      <h1>Password updated</h1>
+      <p class="intro">You can now sign in with your new password.</p>
+      <button class="primary" onclick="location.href='/'">Back to sign in</button>
+    </div>
+
+    <div class="footer">
+      Didn't request this? You can ignore the email — your password hasn't changed.
+    </div>
+  </div>
+</div>
+
+<script src="/supabase.js"></script>
+<script>
+(async function () {
+  const { createClient } = window.supabase;
+  const SUPABASE_URL = 'https://rbnqyaxwpsokworjmpti.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_XOpy9BmVTkz65s6kOF3WHA_rkWQ4Yqv';
+  const supa = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { detectSessionInUrl: true, flowType: 'implicit', persistSession: false }
+  });
+
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => { $(id).style.display = ''; };
+  const hide = (id) => { $(id).style.display = 'none'; };
+
+  function setState(state, errText) {
+    ['loading-state', 'ready-state', 'error-state', 'success-state'].forEach(hide);
+    show(state);
+    if (state === 'error-state' && errText) $('error-text').textContent = errText;
+  }
+
+  // Supabase v2 puts the recovery token in the URL hash on click-through:
+  //   #access_token=...&refresh_token=...&type=recovery
+  // The client (with detectSessionInUrl:true) parses it automatically and
+  // emits PASSWORD_RECOVERY. We use that as the "ready" signal.
+  let recoveryReady = false;
+
+  supa.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session?.user)) {
+      recoveryReady = true;
+      setState('ready-state');
+    }
+  });
+
+  // Fallback: if no event fires within 3 seconds, show an error.
+  setTimeout(() => {
+    if (!recoveryReady) {
+      setState('error-state',
+        'This reset link is invalid or has expired. Please request a new one from the sign-in screen.');
+    }
+  }, 3000);
+
+  function validate() {
+    const a = $('pw1').value;
+    const b = $('pw2').value;
+    const btn = $('save-btn');
+    const hint = $('pw-hint');
+    if (a.length < 6) {
+      hint.textContent = 'At least 6 characters. Both fields must match.';
+      hint.style.color = 'var(--muted)';
+      btn.disabled = true; return;
+    }
+    if (a !== b) {
+      hint.textContent = "Passwords don't match.";
+      hint.style.color = 'var(--red)';
+      btn.disabled = true; return;
+    }
+    hint.textContent = 'Looks good.';
+    hint.style.color = 'var(--green)';
+    btn.disabled = false;
+  }
+  $('pw1').addEventListener('input', validate);
+  $('pw2').addEventListener('input', validate);
+
+  $('save-btn').addEventListener('click', async () => {
+    const btn = $('save-btn');
+    const msg = $('msg');
+    const pw = $('pw1').value;
+    btn.disabled = true;
+    msg.className = 'msg info';
+    msg.textContent = 'Saving…';
+    try {
+      const { error } = await supa.auth.updateUser({ password: pw });
+      if (error) throw error;
+      setState('success-state');
+    } catch (e) {
+      msg.className = 'msg error';
+      msg.textContent = e.message || 'Could not update password.';
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

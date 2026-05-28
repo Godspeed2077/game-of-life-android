@@ -170,6 +170,36 @@ $('logout-btn').addEventListener('click', async () => {
   show($('auth-screen'));
 });
 
+// ---- Forgot password ----
+$('auth-forgot')?.addEventListener('click', async () => {
+  const current = ($('auth-email').value || '').trim();
+  const email = (window.prompt('Email to send a reset link to:', current) || '').trim();
+  if (!email) return;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const msg = $('auth-msg');
+    msg.className = 'auth-msg error';
+    msg.textContent = "That doesn't look like a valid email.";
+    return;
+  }
+  const msg = $('auth-msg');
+  msg.className = 'auth-msg info';
+  msg.textContent = 'Sending reset link…';
+  try {
+    // Always send to the live site so the link works on any device,
+    // including PWAs installed from forgepointrelay.com.
+    const redirectTo = (location.origin && location.origin.startsWith('http'))
+      ? location.origin + '/reset.html'
+      : 'https://gameoflifeapp.vercel.app/reset.html';
+    const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) throw error;
+    msg.className = 'auth-msg success';
+    msg.textContent = "If that email is registered, a reset link is on its way. Check your inbox (and spam).";
+  } catch (err) {
+    msg.className = 'auth-msg error';
+    msg.textContent = err.message || 'Could not send reset link.';
+  }
+});
+
 // ---- APK auto-update detection ----
 // BUILD_VERSION is injected by GitHub Actions at APK build time.
 // PWA users have it as null, so the check no-ops for them.
@@ -340,7 +370,16 @@ async function onSignedIn(u) {
   render();
   maybeOfferCheckin();
   maybeOfferPush();
-  showOnboarding(false);
+  // Make sure we know whether the user already has a display_name before deciding
+  // which onboarding path to take.
+  try { await loadProfile(); } catch (e) { console.warn('loadProfile failed pre-onboarding', e); }
+  // Existing users who finished the old (pre-alias) tour but have no display_name
+  // get a focused one-step backfill prompt. New users see the full tour.
+  if (character && character.onboarding_completed_at && !(profile && profile.display_name)) {
+    showNamePickerOnly();
+  } else {
+    showOnboarding(false);
+  }
 }
 
 async function checkAdmin() {
@@ -367,6 +406,10 @@ async function loadProgress() {
       if (prev > 0 && newRank > prev) {
         const name = progress.overall.tier.name;
         toast(`★ TIER UP — You are now ${name}!`, 6000);
+        // Fire-and-forget — issue a Stripe coupon for this new tier (#44)
+        issueTierCoupon(name, newRank, 'overall').catch(() => {});
+        // Offer to share the win (#12)
+        setTimeout(() => shareProgress('Tier Up!', `I just hit ${name} in Game of Life`), 2500);
       }
       if (newRank > prev) localStorage.setItem('lastTierRank', String(newRank));
     }
@@ -656,6 +699,414 @@ function closeHelpSheet() {
   if (backdrop) backdrop.classList.remove('show');
 }
 
+// === Account / Settings sheet ===
+let accNameMode = 'alias'; // tracks current selection inside account sheet
+
+function openAccountSheet() {
+  const el = document.getElementById('sheet-account');
+  const backdrop = document.getElementById('sheet-backdrop');
+  if (!el) return;
+  el.classList.remove('hidden');
+  el.classList.add('show');
+  el.style.display = '';
+  if (backdrop) backdrop.classList.add('show');
+  // Hydrate form fields
+  const nameInput = document.getElementById('acc-name-input');
+  const emailLabel = document.getElementById('acc-current-email');
+  const lbCheck = document.getElementById('acc-global-lb');
+  if (nameInput) nameInput.value = (profile && profile.display_name) || '';
+  accNameMode = (profile && profile.display_name_is_alias === false) ? 'real' : 'alias';
+  applyAccountNameMode();
+  if (emailLabel) emailLabel.textContent = (user && user.email) || '—';
+  if (lbCheck) lbCheck.checked = !!(profile && profile.show_on_global_leaderboard);
+  // Email digest hydration (#45)
+  const digestCheck = document.getElementById('acc-email-digests');
+  if (digestCheck) digestCheck.checked = !!(profile && profile.email_digests_optin);
+  const digestFreq = (profile && profile.email_digests_frequency) || 'daily';
+  ['immediate', 'daily', 'weekly'].forEach((f) => {
+    document.getElementById('acc-digest-' + f)?.classList.toggle('primary', f === digestFreq);
+  });
+  // Clear messages
+  ['acc-name-msg', 'acc-email-msg', 'acc-pw-msg', 'acc-lb-msg', 'acc-domains-msg', 'acc-digest-msg'].forEach((id) => {
+    const m = document.getElementById(id);
+    if (m) { m.textContent = ''; m.className = 'auth-msg'; }
+  });
+  // Clear password fields
+  const cur = document.getElementById('acc-cur-pw');
+  const nu = document.getElementById('acc-new-pw');
+  if (cur) cur.value = '';
+  if (nu) nu.value = '';
+  const ne = document.getElementById('acc-new-email');
+  if (ne) ne.value = '';
+  // Load + render custom domains and tier coupons
+  loadAndRenderCustomDomains();
+  loadAndRenderTierCoupons();
+}
+
+function closeAccountSheet() {
+  const el = document.getElementById('sheet-account');
+  const backdrop = document.getElementById('sheet-backdrop');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  if (backdrop) backdrop.classList.remove('show');
+}
+
+function applyAccountNameMode() {
+  const real = document.getElementById('acc-name-tab-real');
+  const alias = document.getElementById('acc-name-tab-alias');
+  const input = document.getElementById('acc-name-input');
+  if (!real || !alias || !input) return;
+  if (accNameMode === 'real') {
+    real.classList.add('primary'); alias.classList.remove('primary');
+    input.placeholder = 'Randy Rockwell';
+  } else {
+    alias.classList.add('primary'); real.classList.remove('primary');
+    input.placeholder = 'ShadowFox42';
+  }
+  updateAccountNameHint();
+}
+
+function updateAccountNameHint() {
+  const input = document.getElementById('acc-name-input');
+  const hint = document.getElementById('acc-name-hint');
+  if (!input || !hint) return;
+  const v = input.value.trim();
+  if (!v) { hint.textContent = '2–32 characters.'; hint.style.color = '#8b94b8'; return; }
+  if (!NAME_RE.test(v)) { hint.textContent = 'Letters, numbers, spaces, hyphens, underscores only.'; hint.style.color = '#ff8a8a'; return; }
+  hint.textContent = 'Looks good.'; hint.style.color = '#6ee7a8';
+}
+
+async function accountSaveName() {
+  if (!user) return;
+  const input = document.getElementById('acc-name-input');
+  const msg = document.getElementById('acc-name-msg');
+  const v = (input?.value || '').trim();
+  if (!NAME_RE.test(v)) {
+    msg.className = 'auth-msg error';
+    msg.textContent = 'Pick a valid name first.';
+    return;
+  }
+  msg.className = 'auth-msg info'; msg.textContent = 'Saving…';
+  try {
+    const { error } = await supa.from('profiles').upsert({
+      user_id: user.id,
+      display_name: v,
+      display_name_is_alias: accNameMode === 'alias'
+    }, { onConflict: 'user_id' });
+    if (error) throw error;
+    if (!profile) profile = {};
+    profile.display_name = v;
+    profile.display_name_is_alias = accNameMode === 'alias';
+    msg.className = 'auth-msg success'; msg.textContent = 'Name updated.';
+  } catch (e) {
+    msg.className = 'auth-msg error'; msg.textContent = e.message || 'Save failed.';
+  }
+}
+
+async function accountSavePassword() {
+  if (!user) return;
+  const cur = document.getElementById('acc-cur-pw').value;
+  const nu = document.getElementById('acc-new-pw').value;
+  const msg = document.getElementById('acc-pw-msg');
+  if (!cur || cur.length < 6) { msg.className = 'auth-msg error'; msg.textContent = 'Enter your current password.'; return; }
+  if (!nu || nu.length < 6) { msg.className = 'auth-msg error'; msg.textContent = 'New password must be at least 6 characters.'; return; }
+  if (cur === nu) { msg.className = 'auth-msg error'; msg.textContent = 'New password must differ from current.'; return; }
+  msg.className = 'auth-msg info'; msg.textContent = 'Verifying…';
+  try {
+    // Re-auth as a safety check: sign in with current password silently.
+    // Supabase doesn't have a true re-auth API, but signInWithPassword on the
+    // already-authenticated user just confirms the credential.
+    const { error: reauthErr } = await supa.auth.signInWithPassword({
+      email: user.email, password: cur
+    });
+    if (reauthErr) {
+      msg.className = 'auth-msg error';
+      msg.textContent = 'Current password is incorrect.';
+      return;
+    }
+    msg.className = 'auth-msg info'; msg.textContent = 'Saving new password…';
+    const { error: upErr } = await supa.auth.updateUser({ password: nu });
+    if (upErr) throw upErr;
+    document.getElementById('acc-cur-pw').value = '';
+    document.getElementById('acc-new-pw').value = '';
+    msg.className = 'auth-msg success';
+    msg.textContent = 'Password updated. You will get a confirmation email at your current address.';
+  } catch (e) {
+    msg.className = 'auth-msg error';
+    msg.textContent = e.message || 'Password change failed.';
+  }
+}
+
+async function accountSaveEmail() {
+  if (!user) return;
+  const newEmail = document.getElementById('acc-new-email').value.trim();
+  const msg = document.getElementById('acc-email-msg');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+    msg.className = 'auth-msg error'; msg.textContent = "That doesn't look like a valid email."; return;
+  }
+  if (newEmail.toLowerCase() === (user.email || '').toLowerCase()) {
+    msg.className = 'auth-msg error'; msg.textContent = "That's already your email."; return;
+  }
+  msg.className = 'auth-msg info'; msg.textContent = 'Sending verification…';
+  try {
+    const { error } = await supa.auth.updateUser({ email: newEmail });
+    if (error) throw error;
+    msg.className = 'auth-msg success';
+    msg.textContent = "Check your inbox at " + newEmail + " for a confirmation link. Your email won't change until you click it.";
+  } catch (e) {
+    msg.className = 'auth-msg error';
+    msg.textContent = e.message || 'Email change failed.';
+  }
+}
+
+async function accountToggleEmailDigests() {
+  if (!user) return;
+  const check = document.getElementById('acc-email-digests');
+  const msg = document.getElementById('acc-digest-msg');
+  const newVal = !!check.checked;
+  msg.className = 'auth-msg info'; msg.textContent = 'Saving…';
+  try {
+    const { error } = await supa.from('profiles').upsert({
+      user_id: user.id, email_digests_optin: newVal
+    }, { onConflict: 'user_id' });
+    if (error) throw error;
+    if (!profile) profile = {};
+    profile.email_digests_optin = newVal;
+    msg.className = 'auth-msg success';
+    msg.textContent = newVal ? 'Email digests turned on. We will email you at ' + (user.email || 'your address') + '.' : 'Email digests turned off.';
+  } catch (e) { check.checked = !newVal; msg.className = 'auth-msg error'; msg.textContent = e.message || 'Could not save.'; }
+}
+
+async function accountSetDigestFrequency(freq) {
+  if (!user) return;
+  const msg = document.getElementById('acc-digest-msg');
+  msg.className = 'auth-msg info'; msg.textContent = 'Saving…';
+  try {
+    const { error } = await supa.from('profiles').upsert({
+      user_id: user.id, email_digests_frequency: freq
+    }, { onConflict: 'user_id' });
+    if (error) throw error;
+    if (!profile) profile = {};
+    profile.email_digests_frequency = freq;
+    ['immediate', 'daily', 'weekly'].forEach((f) => {
+      document.getElementById('acc-digest-' + f)?.classList.toggle('primary', f === freq);
+    });
+    msg.className = 'auth-msg success'; msg.textContent = 'Frequency set to ' + freq + '.';
+  } catch (e) { msg.className = 'auth-msg error'; msg.textContent = e.message || 'Could not save.'; }
+}
+
+async function accountToggleLeaderboard() {
+  if (!user) return;
+  const check = document.getElementById('acc-global-lb');
+  const msg = document.getElementById('acc-lb-msg');
+  const newVal = !!check.checked;
+  msg.className = 'auth-msg info'; msg.textContent = 'Saving…';
+  try {
+    const { error } = await supa.from('profiles').upsert({
+      user_id: user.id, show_on_global_leaderboard: newVal
+    }, { onConflict: 'user_id' });
+    if (error) throw error;
+    if (!profile) profile = {};
+    profile.show_on_global_leaderboard = newVal;
+    msg.className = 'auth-msg success';
+    msg.textContent = newVal ? 'You will appear on the global leaderboard.' : 'You are off the global leaderboard.';
+  } catch (e) {
+    check.checked = !newVal; // revert
+    msg.className = 'auth-msg error';
+    msg.textContent = e.message || 'Could not save.';
+  }
+}
+
+// === Custom Life Domains (#43) ===
+let customDomains = [];
+
+async function loadAndRenderCustomDomains() {
+  if (!user) return;
+  try {
+    const { data, error } = await supa.from('custom_domain_progress').select('*');
+    if (error) {
+      // Table may not exist yet (migration not applied). Fail silently.
+      console.warn('custom_domain_progress query failed:', error.message);
+      customDomains = [];
+    } else {
+      customDomains = data || [];
+    }
+    renderCustomDomainsList();
+  } catch (e) {
+    console.warn('loadAndRenderCustomDomains exception:', e);
+  }
+}
+
+function renderCustomDomainsList() {
+  const list = document.getElementById('acc-domains-list');
+  if (!list) return;
+  if (!customDomains.length) {
+    list.innerHTML = '<div class="empty" style="font-size:13px; color: var(--muted); padding: 8px 0; text-align: center;">No custom domains yet.</div>';
+    return;
+  }
+  list.innerHTML = customDomains.map((d) => {
+    const safeLabel = escapeHtml(d.label);
+    const safeEmoji = escapeHtml(d.emoji || '⭐');
+    const safeColor = (d.color || '#5fc1e8').replace(/[^#0-9a-fA-F]/g, '');
+    return `<div class="conn-item" style="display:flex; gap:10px; align-items:center; border-left: 3px solid ${safeColor};">
+      <div style="font-size:20px;">${safeEmoji}</div>
+      <div class="conn-meta" style="flex:1;">
+        <div class="conn-name">${safeLabel}</div>
+        <div class="conn-sub">${(d.total_xp || 0).toLocaleString()} XP · ${d.event_count || 0} log${d.event_count === 1 ? '' : 's'}</div>
+      </div>
+      <button type="button" class="panel-action" data-cd-log="${d.domain_id}" data-cd-slug="${d.slug}" data-cd-label="${safeLabel}" style="padding: 6px 10px; font-size: 12px;">+ Log</button>
+      <button type="button" class="panel-action" data-cd-remove="${d.domain_id}" style="padding: 6px 10px; font-size: 12px; color: var(--red); border-color: rgba(255,138,138,0.4);">×</button>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('[data-cd-remove]').forEach((b) => {
+    b.addEventListener('click', () => removeCustomDomain(b.dataset.cdRemove));
+  });
+  list.querySelectorAll('[data-cd-log]').forEach((b) => {
+    b.addEventListener('click', () => logCustomDomainXP(b.dataset.cdSlug, b.dataset.cdLabel));
+  });
+}
+
+function slugifyDomainLabel(label) {
+  return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32);
+}
+
+async function addCustomDomain(label, color, emoji) {
+  if (!user) return;
+  const msg = document.getElementById('acc-domains-msg');
+  const cleanLabel = String(label || '').trim();
+  const cleanColor = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#5fc1e8';
+  const cleanEmoji = (String(emoji || '').trim() || '⭐').slice(0, 8);
+  if (!cleanLabel || cleanLabel.length > 40) {
+    msg.className = 'auth-msg error'; msg.textContent = 'Label is required (max 40 chars).'; return;
+  }
+  const slug = slugifyDomainLabel(cleanLabel);
+  if (!slug || slug.length < 2) {
+    msg.className = 'auth-msg error'; msg.textContent = 'Label needs at least 2 letters/numbers.'; return;
+  }
+  msg.className = 'auth-msg info'; msg.textContent = 'Adding…';
+  try {
+    const { error } = await supa.from('custom_domains').insert({
+      user_id: user.id, slug, label: cleanLabel, color: cleanColor, emoji: cleanEmoji
+    });
+    if (error) {
+      if (String(error.message).includes('duplicate') || String(error.code) === '23505') {
+        msg.className = 'auth-msg error'; msg.textContent = 'You already have a domain with that name.';
+      } else throw error;
+      return;
+    }
+    msg.className = 'auth-msg success'; msg.textContent = 'Domain added.';
+    document.getElementById('cd-label').value = '';
+    document.getElementById('cd-emoji').value = '';
+    document.getElementById('cd-color').value = '#5fc1e8';
+    await loadAndRenderCustomDomains();
+  } catch (e) {
+    msg.className = 'auth-msg error'; msg.textContent = e.message || 'Add failed.';
+  }
+}
+
+async function removeCustomDomain(domainId) {
+  if (!user || !domainId) return;
+  if (!confirm('Remove this domain? Its XP history will remain in your events log but no longer count toward any level.')) return;
+  const msg = document.getElementById('acc-domains-msg');
+  msg.className = 'auth-msg info'; msg.textContent = 'Removing…';
+  try {
+    const { error } = await supa.from('custom_domains').delete().eq('id', domainId);
+    if (error) throw error;
+    msg.className = 'auth-msg success'; msg.textContent = 'Removed.';
+    await loadAndRenderCustomDomains();
+  } catch (e) {
+    msg.className = 'auth-msg error'; msg.textContent = e.message || 'Remove failed.';
+  }
+}
+
+async function logCustomDomainXP(slug, label) {
+  if (!user || !slug) return;
+  const input = window.prompt(`How much XP do you want to log for "${label}"?\n\n(Typical: 5–50 per session)`, '20');
+  if (input === null) return;
+  const xp = parseInt(input, 10);
+  if (isNaN(xp) || xp < 1 || xp > 10000) { toast('Enter a number between 1 and 10000.'); return; }
+  const note = window.prompt('Optional note (what did you do?)', '') || '';
+  try {
+    // insertEvent signature: (kind, source, payload)
+    await insertEvent('custom_domain', 'manual', { domain_slug: slug, xp, note });
+    toast(`+${xp} XP · ${label}`);
+    await loadAndRenderCustomDomains();
+  } catch (e) {
+    toast('Log failed: ' + (e.message || e));
+  }
+}
+
+// === Tier Rewards / Coupons (#44) ===
+let tierCoupons = [];
+
+async function loadAndRenderTierCoupons() {
+  if (!user) return;
+  try {
+    const { data, error } = await supa.from('tier_coupons')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('tier_coupons query failed:', error.message);
+      tierCoupons = [];
+    } else {
+      tierCoupons = data || [];
+    }
+    renderTierCouponsList();
+  } catch (e) {
+    console.warn('loadAndRenderTierCoupons exception:', e);
+  }
+}
+
+function renderTierCouponsList() {
+  const list = document.getElementById('acc-coupons-list');
+  if (!list) return;
+  if (!tierCoupons.length) {
+    list.innerHTML = '<div class="empty" style="font-size:13px; color: var(--muted); padding: 8px 0; text-align: center;">Tier up to earn your first reward.</div>';
+    return;
+  }
+  const now = Date.now();
+  list.innerHTML = tierCoupons.map((c) => {
+    const expired = c.expires_at && new Date(c.expires_at).getTime() < now;
+    const used = !!c.redeemed_at;
+    let status = 'Active';
+    let statusColor = 'var(--green)';
+    if (used) { status = 'Used'; statusColor = 'var(--muted)'; }
+    else if (expired) { status = 'Expired'; statusColor = 'var(--red)'; }
+    return `<div class="conn-item" style="display:flex; gap:10px; align-items:center; ${used || expired ? 'opacity:0.5;' : ''}">
+      <div style="font-family: 'Cinzel', serif; color: var(--gold); font-size: 13px; min-width: 70px;">${escapeHtml(c.tier_name)}</div>
+      <div class="conn-meta" style="flex:1;">
+        <div class="conn-name" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--cyan);">${escapeHtml(c.coupon_code || '—')}</div>
+        <div class="conn-sub">${c.discount_percent}% off · ${status}</div>
+      </div>
+      ${(!used && !expired) ? `<button type="button" class="panel-action" data-copy-coupon="${escapeHtml(c.coupon_code || '')}" style="padding: 6px 10px; font-size: 12px;">Copy</button>` : ''}
+    </div>`;
+  }).join('');
+  list.querySelectorAll('[data-copy-coupon]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copyCoupon); toast('Coupon copied'); }
+      catch { toast(b.dataset.copyCoupon, 5000); }
+    });
+  });
+}
+
+// Called from loadProgress() when a tier-up is detected. Fires the
+// create-tier-coupon Edge Function and refreshes the coupons list.
+async function issueTierCoupon(tierName, tierRank, scope) {
+  if (!user) return;
+  try {
+    const { data, error } = await supa.functions.invoke('create-tier-coupon', {
+      body: { tier_name: tierName, tier_rank: tierRank, scope: scope || 'overall' }
+    });
+    if (error) { console.warn('create-tier-coupon error:', error); return; }
+    if (data && data.newly_issued) {
+      toast(`🎟️ Tier reward: ${data.discount_percent}% off — ${data.coupon_code}`, 6000);
+      await loadAndRenderTierCoupons();
+    }
+  } catch (e) {
+    console.warn('issueTierCoupon exception:', e);
+  }
+}
+
 async function loadMyFeedback() {
   try {
     const { data, error } = await supa.from('feedback').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20);
@@ -753,7 +1204,10 @@ async function recomputeAutoBosses() {
     // If any bosses were newly defeated, surface a toast so the user knows
     if (data && Array.isArray(data.bosses)) {
       for (const b of data.bosses) {
-        if (b.newly_defeated) toast('🏆 Boss defeated: ' + b.name, 4000);
+        if (b.newly_defeated) {
+          toast('🏆 Boss defeated: ' + b.name, 4000);
+          setTimeout(() => shareProgress('Boss defeated', `I just defeated "${b.name}" in Game of Life`), 2000);
+        }
       }
     }
   } catch (e) { console.warn('recompute bosses error', e); }
@@ -1035,32 +1489,229 @@ async function saveProfile() {
   closeSheet();
 }
 
-async function openFriends() {
-  await loadFriends();
-  renderFriendsList();
-  openSheet('friends');
+// === Friends + Leaderboards ===
+let friendProfiles = {}; // user_id -> { display_name }
+let socActiveTab = 'friends';
+let lbMetric = 'xp_7d';
+
+async function openSocialSheet() {
+  const el = document.getElementById('sheet-social');
+  const backdrop = document.getElementById('sheet-backdrop');
+  if (!el) return;
+  el.classList.remove('hidden'); el.classList.add('show'); el.style.display = '';
+  if (backdrop) backdrop.classList.add('show');
+  setSocTab(socActiveTab || 'friends');
 }
 
-function renderFriendsList() {
-  const list = $('friends-list');
-  if (!friends.length) {
-    list.innerHTML = '<div class="empty">No friends yet. Send a request by email above.</div>';
+function closeSocialSheet() {
+  const el = document.getElementById('sheet-social');
+  const backdrop = document.getElementById('sheet-backdrop');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  if (backdrop) backdrop.classList.remove('show');
+}
+
+function setSocTab(tab) {
+  socActiveTab = tab;
+  document.querySelectorAll('.soc-tab').forEach((b) => {
+    b.classList.toggle('primary', b.dataset.socTab === tab);
+  });
+  document.querySelectorAll('.soc-panel').forEach((p) => { p.style.display = 'none'; });
+  const panel = document.getElementById('soc-panel-' + tab);
+  if (panel) panel.style.display = '';
+  if (tab === 'friends') loadAndRenderFriends();
+  if (tab === 'friends-lb') loadAndRenderFriendsLeaderboard();
+  if (tab === 'global-lb') loadAndRenderGlobalLeaderboard();
+}
+
+async function loadAndRenderFriends() {
+  if (!user) return;
+  // Pull friendships
+  const { data: rows, error } = await supa.from('friendships')
+    .select('*')
+    .or('user_a.eq.' + user.id + ',user_b.eq.' + user.id)
+    .order('created_at', { ascending: false });
+  friends = rows || [];
+  // Collect counterpart user_ids
+  const otherIds = friends.map((f) => f.user_a === user.id ? f.user_b : f.user_a);
+  if (otherIds.length) {
+    const { data: profs } = await supa.from('profiles')
+      .select('user_id, display_name')
+      .in('user_id', otherIds);
+    friendProfiles = {};
+    (profs || []).forEach((p) => { friendProfiles[p.user_id] = p; });
+  } else {
+    friendProfiles = {};
+  }
+  renderFriendsAndPending();
+}
+
+function renderFriendsAndPending() {
+  const pendingList = document.getElementById('pending-list');
+  const pendingSection = document.getElementById('pending-section');
+  const list = document.getElementById('friends-list');
+  if (!list) return;
+
+  const accepted = friends.filter((f) => f.status === 'accepted');
+  // Only show incoming pending requests (not ones I sent)
+  const pendingIncoming = friends.filter((f) => f.status === 'pending' && f.requested_by && f.requested_by !== user.id);
+
+  if (pendingSection) pendingSection.style.display = pendingIncoming.length ? '' : 'none';
+  if (pendingList) {
+    pendingList.innerHTML = pendingIncoming.map((f) => {
+      const other = f.user_a === user.id ? f.user_b : f.user_a;
+      const name = (friendProfiles[other]?.display_name) || 'A new player';
+      return `<div class="conn-item" style="display:flex; gap:8px; align-items:center;">
+        <div class="conn-icon">${(name[0]||'?').toUpperCase()}</div>
+        <div class="conn-meta" style="flex:1;"><div class="conn-name">${escapeHtml(name)}</div><div class="conn-sub">wants to be friends</div></div>
+        <button type="button" class="panel-action primary" data-friend-accept="${other}" style="padding: 6px 10px; font-size: 12px;">Accept</button>
+        <button type="button" class="panel-action" data-friend-decline="${other}" style="padding: 6px 10px; font-size: 12px;">Decline</button>
+      </div>`;
+    }).join('');
+    pendingList.querySelectorAll('[data-friend-accept]').forEach((b) => b.addEventListener('click', () => respondToRequest(b.dataset.friendAccept, true)));
+    pendingList.querySelectorAll('[data-friend-decline]').forEach((b) => b.addEventListener('click', () => respondToRequest(b.dataset.friendDecline, false)));
+  }
+
+  if (!accepted.length) {
+    list.innerHTML = '<div class="empty" style="font-size:13px; color: var(--muted); padding: 16px 0; text-align: center;">No friends yet.</div>';
     return;
   }
-  list.innerHTML = friends.map(f => {
+  list.innerHTML = accepted.map((f) => {
     const other = f.user_a === user.id ? f.user_b : f.user_a;
-    const isInviter = f.initiated_by === user.id;
-    return '<div class="conn-item"><div class="conn-icon">' + (other[0]||'?').toUpperCase() + '</div><div class="conn-meta"><div class="conn-name">' + other.slice(0,8) + '…</div><div class="conn-sub">' + f.status + (isInviter ? ' · sent' : ' · received') + '</div></div></div>';
+    const name = (friendProfiles[other]?.display_name) || 'Anonymous';
+    return `<div class="conn-item" style="display:flex; gap:8px; align-items:center;">
+      <div class="conn-icon">${(name[0]||'?').toUpperCase()}</div>
+      <div class="conn-meta" style="flex:1;"><div class="conn-name">${escapeHtml(name)}</div><div class="conn-sub">friend</div></div>
+      <button type="button" class="panel-action" data-friend-remove="${other}" style="padding: 6px 10px; font-size: 12px;">Remove</button>
+    </div>`;
   }).join('');
+  list.querySelectorAll('[data-friend-remove]').forEach((b) => b.addEventListener('click', () => removeFriend(b.dataset.friendRemove)));
+}
+
+async function respondToRequest(otherUserId, accept) {
+  try {
+    const { data, error } = await supa.rpc('respond_to_friend_request', {
+      other_user_id: otherUserId, accept: accept
+    });
+    if (error) throw error;
+    if (data && data.ok === false) {
+      toast('Could not respond: ' + (data.error || 'unknown'));
+      return;
+    }
+    toast(accept ? 'Friend added.' : 'Request declined.');
+    await loadAndRenderFriends();
+  } catch (e) {
+    toast('Error: ' + (e.message || e));
+  }
+}
+
+async function removeFriend(otherUserId) {
+  if (!confirm('Remove this friend?')) return;
+  const { error } = await supa.from('friendships')
+    .delete()
+    .or(`and(user_a.eq.${user.id},user_b.eq.${otherUserId}),and(user_a.eq.${otherUserId},user_b.eq.${user.id})`);
+  if (error) { toast('Remove failed: ' + error.message); return; }
+  toast('Friend removed.');
+  await loadAndRenderFriends();
 }
 
 async function addFriendByEmail(email) {
+  const msg = document.getElementById('add-friend-msg');
   if (!email) return;
-  // Look up user_id by email — requires service-role or RPC; use auth.users via Postgres function
-  // Simple path: query characters via email match — we don't have email column. Use auth.admin?
-  // For now: store as pending request even if email lookup fails; show "request sent" UX
-  // Real implementation needs an RPC. Provide a placeholder for now.
-  toast('Sent friend request to ' + email + ' (matching by email runs server-side once wired)');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msg.className = 'auth-msg error'; msg.textContent = "That doesn't look like a valid email.";
+    return;
+  }
+  msg.className = 'auth-msg info'; msg.textContent = 'Sending…';
+  try {
+    const { data, error } = await supa.rpc('send_friend_request', { target_email: email });
+    if (error) throw error;
+    if (data && data.ok === false) {
+      const map = {
+        user_not_found: "Nobody with that email is on Game of Life yet — they'd need to sign up first.",
+        cannot_add_self: "That's you. Try someone else.",
+        already_friends: "You're already friends with them.",
+        request_already_pending: 'A request to that user is already pending.',
+      };
+      msg.className = 'auth-msg error';
+      msg.textContent = map[data.error] || ('Error: ' + data.error);
+      return;
+    }
+    msg.className = 'auth-msg success';
+    msg.textContent = 'Request sent.';
+    document.getElementById('friend-email').value = '';
+    await loadAndRenderFriends();
+  } catch (e) {
+    msg.className = 'auth-msg error';
+    msg.textContent = e.message || 'Could not send request.';
+  }
+}
+
+async function loadAndRenderFriendsLeaderboard() {
+  const list = document.getElementById('friends-lb-list');
+  if (!list) return;
+  list.innerHTML = '<div class="empty" style="font-size:13px; color: var(--muted); padding: 16px 0; text-align: center;">Loading…</div>';
+  try {
+    const { data, error } = await supa.from('friends_leaderboard').select('*');
+    if (error) throw error;
+    if (!data || !data.length) {
+      list.innerHTML = '<div class="empty" style="font-size:13px; color: var(--muted); padding: 16px 0; text-align: center;">Add a friend to see leaderboards.</div>';
+      return;
+    }
+    // Sort by selected metric
+    const sorted = [...data].sort((a, b) => (Number(b[lbMetric]) || 0) - (Number(a[lbMetric]) || 0));
+    list.innerHTML = sorted.map((row, i) => renderLbRow(row, i + 1, lbMetric)).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="empty" style="color: var(--red); padding: 16px 0; text-align: center;">' + escapeHtml(e.message || 'Load failed') + '</div>';
+  }
+}
+
+async function loadAndRenderGlobalLeaderboard() {
+  const list = document.getElementById('global-lb-list');
+  const statusEl = document.getElementById('global-lb-status');
+  if (!list) return;
+  list.innerHTML = '<div class="empty" style="font-size:13px; color: var(--muted); padding: 16px 0; text-align: center;">Loading…</div>';
+  // Show note if user hasn't opted in
+  if (statusEl) {
+    if (!profile?.show_on_global_leaderboard) {
+      statusEl.style.display = '';
+      statusEl.innerHTML = "You're not on this leaderboard. Opt in from Account → Leaderboards.";
+    } else {
+      statusEl.style.display = 'none';
+    }
+  }
+  try {
+    const { data, error } = await supa.from('global_leaderboard').select('*');
+    if (error) throw error;
+    if (!data || !data.length) {
+      list.innerHTML = '<div class="empty" style="font-size:13px; color: var(--muted); padding: 16px 0; text-align: center;">Nobody opted in yet. Be the first.</div>';
+      return;
+    }
+    list.innerHTML = data.map((row, i) => renderLbRow(row, i + 1, 'xp_7d')).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="empty" style="color: var(--red); padding: 16px 0; text-align: center;">' + escapeHtml(e.message || 'Load failed') + '</div>';
+  }
+}
+
+function renderLbRow(row, rank, metric) {
+  const isMe = row.user_id === user.id;
+  const name = escapeHtml(row.display_name || 'Anonymous');
+  let metricLabel = '';
+  if (metric === 'xp_7d') metricLabel = (row.xp_7d || 0).toLocaleString() + ' XP';
+  else if (metric === 'workouts_7d') metricLabel = (row.workouts_7d || 0) + ' workouts';
+  else if (metric === 'workout_streak_current') metricLabel = (row.workout_streak_current || 0) + '-day streak';
+  return `<div class="conn-item" style="display:flex; gap:10px; align-items:center; ${isMe ? 'background:rgba(245,200,66,0.08); border-color:rgba(245,200,66,0.4);' : ''}">
+    <div style="width:24px; text-align:center; font-family:'Cinzel',serif; color:${rank<=3?'#f5c842':'#8b94b8'}; font-weight:700;">${rank}</div>
+    <div class="conn-icon">${(row.display_name||'?')[0].toUpperCase()}</div>
+    <div class="conn-meta" style="flex:1;">
+      <div class="conn-name">${name}${isMe?' · you':''}</div>
+      <div class="conn-sub">Level ${row.overall_level || 1}</div>
+    </div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--cyan);">${metricLabel}</div>
+  </div>`;
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 // ---- Render ----
@@ -1881,14 +2532,93 @@ $('form-checkin').addEventListener('submit', async (e) => {
 });
 // === Onboarding tour ===
 let onbStep = 1;
-const ONB_TOTAL = 5;
+const ONB_TOTAL = 6;
+let onbNameMode = 'alias'; // 'real' or 'alias'
+let onbNameOnly = false;   // backfill mode — only show step 2
+
+const NAME_RE = /^[A-Za-z0-9 _-]{2,32}$/;
 
 function showOnboarding(forceReplay) {
-  if (!forceReplay && character && character.onboarding_completed_at) return; // already done
+  if (!forceReplay && character && character.onboarding_completed_at && character.display_name) return;
+  onbNameOnly = false;
   onbStep = 1;
+  prefillNameInput();
   renderOnboardingStep();
   const el = document.getElementById('onboarding');
   if (el) el.classList.remove('hidden');
+}
+
+// Backfill mode: existing users who finished tour before alias step existed,
+// or whose display_name was never set. Show ONLY the name picker.
+function showNamePickerOnly() {
+  onbNameOnly = true;
+  onbStep = 2;
+  prefillNameInput();
+  renderOnboardingStep();
+  const el = document.getElementById('onboarding');
+  if (el) el.classList.remove('hidden');
+  // Hide skip in backfill mode — name is required
+  const skip = document.getElementById('onb-skip');
+  if (skip) skip.style.display = 'none';
+}
+
+function prefillNameInput() {
+  const input = document.getElementById('onb-name-input');
+  if (!input) return;
+  const existing = (profile && profile.display_name) || '';
+  input.value = existing;
+  // If user already had a name, default to "real" tab; new users default to "alias"
+  onbNameMode = existing && !profile?.display_name_is_alias ? 'real' : 'alias';
+  applyNameMode();
+}
+
+function applyNameMode() {
+  const real = document.getElementById('onb-name-tab-real');
+  const alias = document.getElementById('onb-name-tab-alias');
+  const input = document.getElementById('onb-name-input');
+  if (!real || !alias || !input) return;
+  if (onbNameMode === 'real') {
+    real.classList.remove('ghost'); real.classList.add('primary');
+    alias.classList.remove('primary'); alias.classList.add('ghost');
+    input.placeholder = 'Randy Rockwell';
+    if (!input.value && user?.email) {
+      // Pre-fill from email prefix as a soft suggestion
+      const guess = user.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      input.value = guess.slice(0, 32);
+    }
+  } else {
+    alias.classList.remove('ghost'); alias.classList.add('primary');
+    real.classList.remove('primary'); real.classList.add('ghost');
+    input.placeholder = 'ShadowFox42';
+  }
+  updateNameHint();
+  updateNextDisabledForName();
+}
+
+function updateNameHint() {
+  const input = document.getElementById('onb-name-input');
+  const hint = document.getElementById('onb-name-hint');
+  if (!input || !hint) return;
+  const v = input.value.trim();
+  if (!v) {
+    hint.textContent = '2–32 characters. Letters, numbers, spaces, hyphens, underscores.';
+    hint.style.color = '#8b94b8';
+  } else if (!NAME_RE.test(v)) {
+    hint.textContent = 'Use only letters, numbers, spaces, hyphens, underscores (2–32 chars).';
+    hint.style.color = '#ff8a8a';
+  } else {
+    hint.textContent = 'Looks good.';
+    hint.style.color = '#6ee7a8';
+  }
+}
+
+function updateNextDisabledForName() {
+  const next = document.getElementById('onb-next');
+  if (!next) return;
+  if (onbStep !== 2) { next.disabled = false; return; }
+  const input = document.getElementById('onb-name-input');
+  const v = (input?.value || '').trim();
+  next.disabled = !NAME_RE.test(v);
 }
 
 function renderOnboardingStep() {
@@ -1899,20 +2629,56 @@ function renderOnboardingStep() {
   const dots = document.getElementById('onb-dots');
   if (dots) {
     dots.innerHTML = '';
-    for (let i = 1; i <= ONB_TOTAL; i++) {
-      const s = document.createElement('span');
-      if (i === onbStep) s.classList.add('on');
-      dots.appendChild(s);
+    // In name-only mode, hide dots since there's just one step
+    if (onbNameOnly) {
+      dots.style.display = 'none';
+    } else {
+      dots.style.display = '';
+      for (let i = 1; i <= ONB_TOTAL; i++) {
+        const s = document.createElement('span');
+        if (i === onbStep) s.classList.add('on');
+        dots.appendChild(s);
+      }
     }
   }
   const prev = document.getElementById('onb-prev');
   const next = document.getElementById('onb-next');
-  if (prev) prev.disabled = onbStep === 1;
-  if (next) next.textContent = (onbStep === ONB_TOTAL) ? "Let's go" : 'Next →';
+  if (prev) prev.disabled = onbStep === 1 || onbNameOnly;
+  if (next) {
+    if (onbNameOnly) next.textContent = 'Save';
+    else next.textContent = (onbStep === ONB_TOTAL) ? "Let's go" : 'Next →';
+  }
+  updateNextDisabledForName();
+}
+
+async function saveDisplayName() {
+  if (!user) return false;
+  const input = document.getElementById('onb-name-input');
+  const v = (input?.value || '').trim();
+  if (!NAME_RE.test(v)) return false;
+  try {
+    const { error } = await supa.from('profiles').upsert({
+      user_id: user.id,
+      display_name: v,
+      display_name_is_alias: onbNameMode === 'alias'
+    }, { onConflict: 'user_id' });
+    if (error) throw error;
+    if (!profile) profile = {};
+    profile.display_name = v;
+    profile.display_name_is_alias = onbNameMode === 'alias';
+    return true;
+  } catch (e) {
+    console.warn('saveDisplayName failed', e);
+    if (typeof toast === 'function') toast("Couldn't save your name — try again");
+    return false;
+  }
 }
 
 async function completeOnboarding() {
   document.getElementById('onboarding')?.classList.add('hidden');
+  const skip = document.getElementById('onb-skip');
+  if (skip) skip.style.display = '';
+  onbNameOnly = false;
   if (user) {
     try {
       await supa.from('characters').update({ onboarding_completed_at: new Date().toISOString() }).eq('user_id', user.id);
@@ -1926,14 +2692,36 @@ document.addEventListener('DOMContentLoaded', () => {
   const next = document.getElementById('onb-next');
   const prev = document.getElementById('onb-prev');
   const skip = document.getElementById('onb-skip');
-  if (next) next.addEventListener('click', () => {
+  const realTab = document.getElementById('onb-name-tab-real');
+  const aliasTab = document.getElementById('onb-name-tab-alias');
+  const nameInput = document.getElementById('onb-name-input');
+
+  if (realTab) realTab.addEventListener('click', () => { onbNameMode = 'real'; applyNameMode(); });
+  if (aliasTab) aliasTab.addEventListener('click', () => { onbNameMode = 'alias'; applyNameMode(); });
+  if (nameInput) nameInput.addEventListener('input', () => { updateNameHint(); updateNextDisabledForName(); });
+
+  if (next) next.addEventListener('click', async () => {
+    // Step 2 → save the name before advancing or finishing
+    if (onbStep === 2) {
+      const ok = await saveDisplayName();
+      if (!ok) return;
+      if (onbNameOnly) { completeOnboarding(); return; }
+    }
     if (onbStep < ONB_TOTAL) { onbStep++; renderOnboardingStep(); }
     else completeOnboarding();
   });
   if (prev) prev.addEventListener('click', () => {
+    if (onbNameOnly) return;
     if (onbStep > 1) { onbStep--; renderOnboardingStep(); }
   });
-  if (skip) skip.addEventListener('click', completeOnboarding);
+  if (skip) skip.addEventListener('click', () => {
+    // Don't allow skip if we're on the name step and name isn't set
+    if (onbStep === 2 && !NAME_RE.test((nameInput?.value || '').trim())) {
+      if (typeof toast === 'function') toast('Pick a name first — you can change it later');
+      return;
+    }
+    completeOnboarding();
+  });
 });
 
 // Returns YYYY-MM-DD in the user's local timezone (falls back to device TZ)
@@ -2107,22 +2895,22 @@ function pushPlatform() {
 // service worker — no Firebase needed.
 async function enablePushWeb() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    // Tell the user *why* instead of the generic message. On Capacitor APKs
-    // running on GrapheneOS without Google services, the WebView's push backend
-    // is absent. Web Push works in: iOS PWA, Android Chrome, regular Android
-    // Chrome System WebView (with Google services), desktop browsers.
-    const inCapacitor = !!window.Capacitor?.isNativePlatform?.();
-    const why = inCapacitor
-      ? 'Push not available in this APK (likely no Google services on the device). The in-app reminders still work whenever the app is open. For background notifications, install the PWA version from forgepointrelay.com in your browser.'
-      : 'Push not supported on this device/browser. Install the app to your home screen (Safari → Share → Add to Home Screen on iPhone, or Chrome → Install on Android) and try again.';
-    toast(why, 8000);
-    return;
+    // Web Push not supported. Try Web Push subscribe anyway — and on failure offer ntfy.sh.
+    return enablePushNtfy();
   }
   const reg = await navigator.serviceWorker.ready;
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') { toast('Notifications declined'); return; }
-  let sub = await reg.pushManager.getSubscription();
-  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) });
+  let sub = null;
+  try {
+    sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) });
+  } catch (e) {
+    // pushManager.subscribe throws AbortError on GrapheneOS without Google services
+    console.warn('Web Push subscribe failed, falling back to ntfy:', e?.message || e);
+    return enablePushNtfy();
+  }
+  if (!sub) return enablePushNtfy();
   const j = sub.toJSON();
   const { error } = await supa.from('push_subscriptions').upsert({
     user_id: user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
@@ -2135,8 +2923,50 @@ async function enablePushWeb() {
   try { await supa.functions.invoke('send-push', { body: { title: 'Game of Life connected', body: 'Push notifications are live.', url: '/' } }); } catch {}
 }
 
+// ntfy.sh fallback for devices without Web Push (GrapheneOS, work-locked, etc.)
+// User installs ntfy from F-Droid (or any UnifiedPush client), creates a topic,
+// and we route their notifications via ntfy.sh instead of Web Push.
+async function enablePushNtfy() {
+  if (!user) return;
+  let existingTopic = null;
+  try {
+    const { data } = await supa.from('push_subscriptions')
+      .select('endpoint')
+      .eq('user_id', user.id)
+      .eq('kind', 'ntfy')
+      .maybeSingle();
+    if (data && data.endpoint) existingTopic = data.endpoint.replace('https://ntfy.sh/', '');
+  } catch {}
+  const topic = existingTopic || ('gol-' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10));
+  const endpoint = 'https://ntfy.sh/' + topic;
+  const proceed = confirm(
+    'Standard push not available on this device.\n\n' +
+    "We'll use ntfy.sh instead — a free, open push service that works without Google Play Services.\n\n" +
+    'Steps:\n' +
+    '1. Install "ntfy" from F-Droid (or Play Store)\n' +
+    '2. Open it, tap "+", choose "Subscribe to topic"\n' +
+    '3. Enter this topic name: ' + topic + '\n' +
+    '4. Leave "Use another server" unchecked\n\n' +
+    'Continue?'
+  );
+  if (!proceed) return;
+  const { error } = await supa.from('push_subscriptions').upsert({
+    user_id: user.id, endpoint, p256dh: null, auth: null,
+    kind: 'ntfy', platform: pushPlatform(),
+    user_agent: navigator.userAgent.slice(0, 200)
+  }, { onConflict: 'user_id,endpoint' });
+  if (error) { toast('Save failed: ' + error.message); return; }
+  try { localStorage.setItem('pushEnabled', '1'); } catch {}
+  toast('ntfy topic saved: ' + topic + '. Subscribe in the ntfy app now — sending test in 5 sec…', 8000);
+  setTimeout(async () => {
+    try {
+      await supa.functions.invoke('send-push-ntfy', { body: { title: 'Game of Life connected (ntfy)', body: 'Push via ntfy.sh is live.', url: '/' } });
+    } catch (e) { console.warn('test send-push failed', e); }
+  }, 5000);
+}
+
 async function enablePush() {
-  // Web Push only — see comment above enablePushWeb for why.
+  // Standard Web Push first, with automatic ntfy.sh fallback on failure.
   await enablePushWeb();
 }
 
@@ -2172,16 +3002,8 @@ function maybeOfferPush() {
 }
 
 
-// Profile / friends
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('edit-profile-btn')?.addEventListener('click', openProfileEditor);
-  document.getElementById('friends-btn')?.addEventListener('click', openFriends);
-  document.getElementById('form-profile')?.addEventListener('submit', async (e) => { e.preventDefault(); await saveProfile(); });
-  document.getElementById('friend-add-btn')?.addEventListener('click', async () => {
-    const email = document.getElementById('friend-email').value.trim();
-    if (email) { await addFriendByEmail(email); document.getElementById('friend-email').value = ''; }
-  });
-});
+// Legacy profile/friends handlers — replaced by the Account sheet (#sheet-account)
+// and Social sheet (#sheet-social). Kept as no-op for safety; elements don't exist.
 
 // Subscription button
 document.addEventListener('DOMContentLoaded', () => {
@@ -2533,61 +3355,101 @@ document.addEventListener('DOMContentLoaded', () => {
   const helpBtn = document.getElementById('help-btn');
   if (helpBtn) helpBtn.addEventListener('click', openHelpSheet);
 
-  // Close handlers for the help sheet (its own × button + backdrop tap + Escape)
+  // Social sheet open button + handlers
+  const socialBtn = document.getElementById('social-btn');
+  if (socialBtn) socialBtn.addEventListener('click', openSocialSheet);
+
+  const socialEl = document.getElementById('sheet-social');
+  if (socialEl) {
+    socialEl.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closeSocialSheet));
+    socialEl.querySelectorAll('.sheet-close').forEach((b) => b.addEventListener('click', closeSocialSheet));
+    socialEl.querySelectorAll('.soc-tab').forEach((b) => {
+      b.addEventListener('click', () => setSocTab(b.dataset.socTab));
+    });
+    socialEl.querySelectorAll('.lb-metric').forEach((b) => {
+      b.addEventListener('click', () => {
+        lbMetric = b.dataset.metric;
+        socialEl.querySelectorAll('.lb-metric').forEach((x) => x.classList.toggle('primary', x === b));
+        loadAndRenderFriendsLeaderboard();
+      });
+    });
+    const addForm = document.getElementById('form-add-friend');
+    if (addForm) addForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const email = document.getElementById('friend-email').value.trim();
+      addFriendByEmail(email);
+    });
+  }
+
+  // Account sheet open button + handlers
+  const accountBtn = document.getElementById('account-btn');
+  if (accountBtn) accountBtn.addEventListener('click', openAccountSheet);
+
+  const accountEl = document.getElementById('sheet-account');
+  if (accountEl) {
+    accountEl.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closeAccountSheet));
+    accountEl.querySelectorAll('.sheet-close').forEach((b) => b.addEventListener('click', closeAccountSheet));
+
+    document.getElementById('acc-name-tab-real')?.addEventListener('click', () => { accNameMode = 'real'; applyAccountNameMode(); });
+    document.getElementById('acc-name-tab-alias')?.addEventListener('click', () => { accNameMode = 'alias'; applyAccountNameMode(); });
+    document.getElementById('acc-name-input')?.addEventListener('input', updateAccountNameHint);
+
+    document.getElementById('acc-name-save')?.addEventListener('click', accountSaveName);
+    document.getElementById('acc-email-save')?.addEventListener('click', accountSaveEmail);
+    document.getElementById('acc-pw-save')?.addEventListener('click', accountSavePassword);
+    document.getElementById('acc-global-lb')?.addEventListener('change', accountToggleLeaderboard);
+
+    // Email digests (#45)
+    document.getElementById('acc-email-digests')?.addEventListener('change', accountToggleEmailDigests);
+    document.getElementById('acc-digest-immediate')?.addEventListener('click', () => accountSetDigestFrequency('immediate'));
+    document.getElementById('acc-digest-daily')?.addEventListener('click', () => accountSetDigestFrequency('daily'));
+    document.getElementById('acc-digest-weekly')?.addEventListener('click', () => accountSetDigestFrequency('weekly'));
+
+    // Custom domains add form (#43)
+    const addDomainForm = document.getElementById('form-add-custom-domain');
+    if (addDomainForm) addDomainForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const label = document.getElementById('cd-label').value;
+      const color = document.getElementById('cd-color').value;
+      const emoji = document.getElementById('cd-emoji').value;
+      addCustomDomain(label, color, emoji);
+    });
+
+    document.getElementById('acc-signout-btn')?.addEventListener('click', async () => {
+      closeAccountSheet();
+      document.getElementById('logout-btn')?.click();
+    });
+  }
+
+  // Close handlers for the help sheet
   const helpSheetEl = document.getElementById('sheet-help');
   if (helpSheetEl) {
     helpSheetEl.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeHelpSheet));
     helpSheetEl.querySelectorAll('.sheet-close').forEach(b => b.addEventListener('click', closeHelpSheet));
   }
   document.getElementById('sheet-backdrop')?.addEventListener('click', () => {
-    // If help is open, close it; otherwise the existing sheet logic handles it
     if (helpSheetEl && helpSheetEl.classList.contains('show')) closeHelpSheet();
+    if (accountEl && accountEl.classList.contains('show')) closeAccountSheet();
+    if (socialEl && socialEl.classList.contains('show')) closeSocialSheet();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && helpSheetEl && helpSheetEl.classList.contains('show')) closeHelpSheet();
+    if (e.key !== 'Escape') return;
+    if (helpSheetEl && helpSheetEl.classList.contains('show')) closeHelpSheet();
+    if (accountEl && accountEl.classList.contains('show')) closeAccountSheet();
+    if (socialEl && socialEl.classList.contains('show')) closeSocialSheet();
   });
 
-  // Share button inside the help sheet
   const helpShare = document.getElementById('help-share-btn');
   if (helpShare) helpShare.addEventListener('click', () => shareApp());
 
-  // Replay onboarding tour from the help sheet
   const helpReplay = document.getElementById('help-replay-tour');
   if (helpReplay) helpReplay.addEventListener('click', () => {
     closeHelpSheet();
     setTimeout(() => showOnboarding(true), 200);
   });
 
-  // Feedback form submit
   const fbForm = document.getElementById('form-feedback');
   if (fbForm) fbForm.addEventListener('submit', submitFeedback);
-
-  // Per-domain levels expand/collapse
-  const toggle = document.getElementById('domains-toggle');
-  if (toggle) {
-    toggle.addEventListener('click', () => {
-      const panel = document.getElementById('domains-panel');
-      const icon = document.getElementById('domains-toggle-icon');
-      const label = document.getElementById('domains-toggle-label');
-      if (!panel) return;
-      domainsExpanded = !domainsExpanded;
-      panel.style.display = domainsExpanded ? 'flex' : 'none';
-      if (icon) icon.textContent = domainsExpanded ? '▴' : '▾';
-      if (label) label.textContent = domainsExpanded ? 'Hide per-domain levels' : 'Show per-domain levels';
-    });
-  }
-  const btn = document.getElementById('history-btn');
-  if (btn) btn.addEventListener('click', openHistory);
-  const close = document.getElementById('history-close');
-  if (close) close.addEventListener('click', closeHistory);
-  document.querySelectorAll('.history-tab').forEach(t => {
-    t.addEventListener('click', () => {
-      document.querySelectorAll('.history-tab').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      historyTab = t.dataset.htab;
-      renderHistory();
-    });
-  });
 });
 
 // Boot
@@ -2600,58 +3462,38 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 
 // === Service-worker update flow (Claude-style) ===
-// New code is downloaded silently in the background. When a new SW is installed
-// and waiting, show a banner offering "Apply update" — tap to skipWaiting +
-// reload. No rollback ever, because there's no native plugin trying to roll
-// back. The web is the source of truth.
 function showSwUpdateBanner(waitingSw) {
   if (document.getElementById('update-banner')) return;
   const banner = document.createElement('div');
   banner.id = 'update-banner';
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#f5c842,#b89531);color:#070912;padding:calc(12px + env(safe-area-inset-top, 0px)) 16px 12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 24px rgba(0,0,0,0.55);font-family:Inter,system-ui,sans-serif;border-bottom:1px solid rgba(0,0,0,0.2);';
-  banner.innerHTML = '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;">New version available</div><div style="font-size:11px;opacity:0.8;">Tap to apply. Saves your progress, no reinstall.</div></div><button id="sw-apply" style="background:#070912;color:#f5c842;border:none;padding:8px 14px;border-radius:8px;font-family:Cinzel,serif;font-size:11px;letter-spacing:0.12em;font-weight:700;cursor:pointer;min-width:80px;">UPDATE</button><button id="sw-dismiss" style="background:transparent;color:#070912;border:none;padding:4px 8px;cursor:pointer;font-size:20px;line-height:1;">×</button>';
+  banner.innerHTML = '<div style="flex:1;font-weight:600;font-size:13px;">New version of Game of Life is ready.</div><button id="update-apply-btn" style="background:#070912;color:#f5c842;border:none;padding:8px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px;">Apply</button><button id="update-dismiss-btn" style="background:transparent;color:#070912;border:none;font-size:18px;cursor:pointer;padding:4px 6px;">\u00d7</button>';
   document.body.appendChild(banner);
-  document.getElementById('sw-apply').onclick = () => {
-    if (waitingSw) waitingSw.postMessage({ type: 'SKIP_WAITING' });
-    // Wait for the new SW to activate, then reload
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      window.location.reload();
-    }, { once: true });
-  };
-  document.getElementById('sw-dismiss').onclick = () => {
+  document.getElementById('update-apply-btn').addEventListener('click', () => {
+    if (waitingSw && waitingSw.postMessage) waitingSw.postMessage({ type: 'SKIP_WAITING' });
+    navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+  });
+  document.getElementById('update-dismiss-btn').addEventListener('click', () => {
     banner.remove();
     try { localStorage.setItem('swUpdateDismissedAt', String(Date.now())); } catch {}
-  };
+  });
 }
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', async () => {
+  window.addEventListener('load', () => {
     try {
-      const reg = await navigator.serviceWorker.register('/sw.js');
-      // Periodic background check — every 60 min while app is open
-      setInterval(() => { try { reg.update(); } catch {} }, 60 * 60 * 1000);
-
-      // If a new SW is already waiting (came in while app was closed)
-      if (reg.waiting) {
-        const dismissedAt = parseInt(localStorage.getItem('swUpdateDismissedAt') || '0', 10);
-        if (!dismissedAt || (Date.now() - dismissedAt) > 12 * 3600 * 1000) {
-          showSwUpdateBanner(reg.waiting);
-        }
-      }
-      // Or one is installing right now
-      reg.addEventListener('updatefound', () => {
-        const sw = reg.installing;
-        if (!sw) return;
-        sw.addEventListener('statechange', () => {
-          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-            // A new version is ready. Only show banner if user hasn't dismissed recently.
-            const dismissedAt = parseInt(localStorage.getItem('swUpdateDismissedAt') || '0', 10);
-            if (!dismissedAt || (Date.now() - dismissedAt) > 12 * 3600 * 1000) {
-              showSwUpdateBanner(sw);
-            } else {
-              console.log('SW update available but dismissed recently — silent install on next launch');
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        reg.addEventListener('updatefound', () => {
+          const sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', () => {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+              const dismissedAt = parseInt(localStorage.getItem('swUpdateDismissedAt') || '0', 10);
+              if (!dismissedAt || (Date.now() - dismissedAt) > 12 * 3600 * 1000) {
+                showSwUpdateBanner(sw);
+              }
             }
-          }
+          });
         });
       });
     } catch (e) { console.warn('SW register failed', e); }

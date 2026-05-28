@@ -1342,6 +1342,9 @@ body::before {
           <span id="auth-toggle-text">New here?</span>
           <a id="auth-toggle">Create account</a>
         </div>
+        <div class="auth-toggle" style="margin-top:8px;">
+          <a id="auth-forgot" style="font-size:12px; color:#8b94b8; cursor:pointer;">Forgot password?</a>
+        </div>
         <div id="auth-msg" class="auth-msg"></div>
       </div>
     </div>
@@ -1363,6 +1366,12 @@ body::before {
     </button>
     <button id="help-btn" class="icon-btn" title="About / Help" aria-label="Help" style="margin-right: 6px;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+    </button>
+    <button id="social-btn" class="icon-btn" title="Friends & Leaderboards" aria-label="Friends" style="margin-right: 6px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </button>
+    <button id="account-btn" class="icon-btn" title="Account" aria-label="Account" style="margin-right: 6px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
     </button>
     <button id="logout-btn" class="icon-btn" title="Sign out" aria-label="Sign out">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
@@ -2073,6 +2082,173 @@ body::before {
 </div>
 
 
+<!-- Social: friends + leaderboards -->
+<div id="sheet-social" class="sheet hidden" data-sheet-id="social">
+  <div class="sheet-head">
+    <div class="sheet-title">Friends &amp; Leaderboards</div>
+    <button class="sheet-close" type="button" data-close>×</button>
+  </div>
+  <div class="sheet-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));">
+
+    <!-- Tabs -->
+    <div style="display:flex; gap:6px; margin-bottom: 16px;">
+      <button type="button" class="panel-action soc-tab primary" data-soc-tab="friends" style="flex:1;">Friends</button>
+      <button type="button" class="panel-action soc-tab" data-soc-tab="friends-lb" style="flex:1;">Friends LB</button>
+      <button type="button" class="panel-action soc-tab" data-soc-tab="global-lb" style="flex:1;">Global</button>
+    </div>
+
+    <!-- Friends panel -->
+    <div id="soc-panel-friends" class="soc-panel">
+      <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 0 0 6px;">ADD A FRIEND</div>
+      <div style="font-size: 11px; color: var(--muted); margin-bottom: 8px;">By email — they need a Game of Life account.</div>
+      <form id="form-add-friend" style="display:flex; gap:6px;">
+        <input type="email" id="friend-email" autocomplete="off" placeholder="friend@email.com" required
+          style="flex:1; padding:10px 12px; border-radius:8px; border:1px solid rgba(95,193,232,0.3); background:rgba(7,9,18,0.6); color:#e8eaef; font-size:13px; font-family:Inter,system-ui,sans-serif;" />
+        <button type="submit" class="btn" style="padding: 10px 16px;">Send</button>
+      </form>
+      <div id="add-friend-msg" class="auth-msg" style="margin-top: 8px;"></div>
+
+      <div id="pending-section" style="display:none; margin-top: 20px;">
+        <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 0 0 8px;">PENDING REQUESTS</div>
+        <div id="pending-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
+
+      <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 20px 0 8px;">YOUR FRIENDS</div>
+      <div id="friends-list" style="display:flex; flex-direction:column; gap:6px;">
+        <div class="empty" style="font-size:13px; color: var(--muted); padding: 16px 0; text-align: center;">No friends yet.</div>
+      </div>
+    </div>
+
+    <!-- Friends Leaderboard panel -->
+    <div id="soc-panel-friends-lb" class="soc-panel" style="display:none;">
+      <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 0 0 6px;">FRIENDS LEADERBOARD</div>
+      <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">You + your accepted friends. Last 7 days.</div>
+      <div style="display:flex; gap:6px; margin-bottom: 12px;">
+        <button type="button" class="panel-action lb-metric primary" data-metric="xp_7d" style="flex:1;">XP</button>
+        <button type="button" class="panel-action lb-metric" data-metric="workouts_7d" style="flex:1;">Workouts</button>
+        <button type="button" class="panel-action lb-metric" data-metric="workout_streak_current" style="flex:1;">Streak</button>
+      </div>
+      <div id="friends-lb-list" style="display:flex; flex-direction:column; gap:6px;">
+        <div class="empty" style="font-size:13px; color: var(--muted); padding: 16px 0; text-align: center;">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Global Leaderboard panel -->
+    <div id="soc-panel-global-lb" class="soc-panel" style="display:none;">
+      <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 0 0 6px;">GLOBAL LEADERBOARD</div>
+      <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">Top 100 opted-in players by last-7-days XP. Only display name is shown.</div>
+      <div id="global-lb-status" style="font-size: 12px; color: var(--muted); padding: 8px 12px; background: rgba(95,193,232,0.06); border-radius: 8px; margin-bottom: 12px; display: none;"></div>
+      <div id="global-lb-list" style="display:flex; flex-direction:column; gap:6px;">
+        <div class="empty" style="font-size:13px; color: var(--muted); padding: 16px 0; text-align: center;">Loading…</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- Account / Settings sheet -->
+<div id="sheet-account" class="sheet hidden" data-sheet-id="account">
+  <div class="sheet-head">
+    <div class="sheet-title">Account</div>
+    <button class="sheet-close" type="button" data-close>×</button>
+  </div>
+  <div class="sheet-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));">
+
+    <!-- Identity -->
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 0 0 6px;">IDENTITY</div>
+    <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">What shows up on leaderboards and shared activity.</div>
+
+    <div style="display:flex; gap:6px; margin-bottom: 10px;">
+      <button type="button" id="acc-name-tab-real" class="panel-action" style="flex:1;">Real name</button>
+      <button type="button" id="acc-name-tab-alias" class="panel-action primary" style="flex:1;">Alias</button>
+    </div>
+    <input type="text" id="acc-name-input" maxlength="32" autocomplete="off" placeholder="ShadowFox42"
+      style="width:100%; padding:12px; border-radius:8px; border:1px solid rgba(245,200,66,0.4); background:rgba(7,9,18,0.6); color:#e8eaef; font-size:14px; font-family:Inter,system-ui,sans-serif; box-sizing:border-box;" />
+    <div id="acc-name-hint" style="font-size:11px; color:#8b94b8; margin-top:6px; min-height:14px;">2–32 characters.</div>
+    <button type="button" class="btn" id="acc-name-save" style="width:100%; margin-top:10px;">Save name</button>
+    <div id="acc-name-msg" class="auth-msg" style="margin-top: 8px;"></div>
+
+    <!-- Email -->
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 20px 0 6px;">EMAIL</div>
+    <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
+      Current: <span id="acc-current-email" style="color: var(--text);">—</span>
+    </div>
+    <input type="email" id="acc-new-email" autocomplete="email" placeholder="new@email.com"
+      style="width:100%; padding:12px; border-radius:8px; border:1px solid rgba(95,193,232,0.3); background:rgba(7,9,18,0.6); color:#e8eaef; font-size:14px; font-family:Inter,system-ui,sans-serif; box-sizing:border-box;" />
+    <button type="button" class="btn" id="acc-email-save" style="width:100%; margin-top:10px;">Change email</button>
+    <div id="acc-email-msg" class="auth-msg" style="margin-top: 8px;"></div>
+    <div style="font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5;">
+      We'll send a confirmation link to the new address. Your email won't change until you click it.
+      The old address gets a heads-up too.
+    </div>
+
+    <!-- Password -->
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 20px 0 6px;">PASSWORD</div>
+    <input type="password" id="acc-cur-pw" autocomplete="current-password" placeholder="Current password" minlength="6"
+      style="width:100%; padding:12px; border-radius:8px; border:1px solid rgba(95,193,232,0.3); background:rgba(7,9,18,0.6); color:#e8eaef; font-size:14px; font-family:Inter,system-ui,sans-serif; box-sizing:border-box; margin-bottom:8px;" />
+    <input type="password" id="acc-new-pw" autocomplete="new-password" placeholder="New password (min 6)" minlength="6"
+      style="width:100%; padding:12px; border-radius:8px; border:1px solid rgba(95,193,232,0.3); background:rgba(7,9,18,0.6); color:#e8eaef; font-size:14px; font-family:Inter,system-ui,sans-serif; box-sizing:border-box;" />
+    <button type="button" class="btn" id="acc-pw-save" style="width:100%; margin-top:10px;">Change password</button>
+    <div id="acc-pw-msg" class="auth-msg" style="margin-top: 8px;"></div>
+
+    <!-- Leaderboard opt-in -->
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 20px 0 6px;">LEADERBOARDS</div>
+    <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px; cursor:pointer; padding:8px 0;">
+      <input type="checkbox" id="acc-global-lb" style="margin-top:3px;" />
+      <span>Show me on the <b>global leaderboard</b> — only my display name is shown, never my email or stats unless I'm in the top 100.</span>
+    </label>
+    <div id="acc-lb-msg" class="auth-msg" style="margin-top: 4px;"></div>
+
+    <!-- Notifications -->
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 20px 0 6px;">NOTIFICATIONS</div>
+    <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">No push notifications on your device? (GrapheneOS without Google Play, work-locked phones, etc.) Get the same alerts via email instead.</div>
+    <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px; cursor:pointer; padding:8px 0;">
+      <input type="checkbox" id="acc-email-digests" style="margin-top:3px;" />
+      <span>Send me <b>email digests</b> for important events — tier-ups, boss defeats, friend requests, level milestones.</span>
+    </label>
+    <div style="display:flex; gap:6px; margin-bottom: 6px;">
+      <button type="button" id="acc-digest-immediate" class="panel-action" style="flex:1; font-size: 11px;">Immediate</button>
+      <button type="button" id="acc-digest-daily" class="panel-action primary" style="flex:1; font-size: 11px;">Daily</button>
+      <button type="button" id="acc-digest-weekly" class="panel-action" style="flex:1; font-size: 11px;">Weekly</button>
+    </div>
+    <div id="acc-digest-msg" class="auth-msg" style="margin-top: 4px;"></div>
+
+    <!-- Custom Life Domains -->
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 20px 0 6px;">CUSTOM LIFE DOMAINS</div>
+    <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">Add areas of your life you want to track beyond Body, Mind, Money — reading, music, spirituality, whatever matters.</div>
+    <div id="acc-domains-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom: 10px;"></div>
+    <form id="form-add-custom-domain" style="display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="cd-emoji" maxlength="4" placeholder="🎨" autocomplete="off"
+          style="width:46px; padding:10px; border-radius:8px; border:1px solid rgba(95,193,232,0.3); background:rgba(7,9,18,0.6); color:#e8eaef; font-size:18px; text-align:center; font-family:Inter,system-ui,sans-serif; box-sizing:border-box;" />
+        <input type="text" id="cd-label" maxlength="40" placeholder="Reading" autocomplete="off" required
+          style="flex:1; padding:10px 12px; border-radius:8px; border:1px solid rgba(95,193,232,0.3); background:rgba(7,9,18,0.6); color:#e8eaef; font-size:14px; font-family:Inter,system-ui,sans-serif; box-sizing:border-box;" />
+        <input type="color" id="cd-color" value="#5fc1e8"
+          style="width:46px; padding:4px; border-radius:8px; border:1px solid rgba(95,193,232,0.3); background:rgba(7,9,18,0.6); cursor:pointer; box-sizing:border-box;" />
+      </div>
+      <button type="submit" class="btn" style="padding: 10px;">Add domain</button>
+    </form>
+    <div id="acc-domains-msg" class="auth-msg" style="margin-top: 8px;"></div>
+
+    <!-- Tier Rewards -->
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 20px 0 6px;">TIER REWARDS</div>
+    <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">Subscription discounts you've earned by leveling up. Each is a one-time-use Stripe coupon, good for 30 days.</div>
+    <div id="acc-coupons-list" style="display:flex; flex-direction:column; gap:6px;">
+      <div class="empty" style="font-size:13px; color: var(--muted); padding: 8px 0; text-align: center;">Tier up to earn your first reward.</div>
+    </div>
+
+    <!-- Danger zone -->
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--red); margin: 24px 0 6px;">DANGER ZONE</div>
+    <button type="button" class="panel-action" id="acc-signout-btn" style="width:100%; border-color: rgba(255, 138, 138, 0.4); color: var(--red);">Sign out</button>
+
+    <div style="margin-top: 24px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); text-align: center; font-size: 11px; color: var(--muted); line-height: 1.6;">
+      Your data is yours. You can export it anytime via support.
+    </div>
+  </div>
+</div>
+
+
 <!-- Onboarding / first-launch tour -->
 <div id="onboarding" class="onboarding hidden">
   <div class="onb-card">
@@ -2083,6 +2259,17 @@ body::before {
       <p class="onb-body">Your real life as a video game. Workouts, meals, money, quests — everything you actually do becomes XP and levels. No grinding fake achievements; only what you live.</p>
     </div>
     <div class="onb-step hidden" data-step="2">
+      <div class="onb-icons" style="font-size:34px;">🪪</div>
+      <h2 class="onb-title">Pick your display name</h2>
+      <p class="onb-body" style="margin-bottom:14px;">This is what friends see on leaderboards and shared activity. You can change it anytime in Account settings.</p>
+      <div style="display:flex; gap:8px; margin-bottom:14px; justify-content:center;">
+        <button type="button" id="onb-name-tab-real" class="onb-btn ghost" style="flex:1; max-width:160px;">My real name</button>
+        <button type="button" id="onb-name-tab-alias" class="onb-btn primary" style="flex:1; max-width:160px;">An alias</button>
+      </div>
+      <input type="text" id="onb-name-input" maxlength="32" autocomplete="off" autocapitalize="words" placeholder="ShadowFox42" style="width:100%; padding:14px; border-radius:10px; border:1px solid rgba(245,200,66,0.4); background:rgba(7,9,18,0.6); color:#e8eaef; font-size:16px; font-family:Inter,system-ui,sans-serif; box-sizing:border-box;" />
+      <div id="onb-name-hint" style="font-size:12px; color:#8b94b8; margin-top:8px; min-height:16px;">2–32 characters. Letters, numbers, spaces, hyphens, underscores.</div>
+    </div>
+    <div class="onb-step hidden" data-step="3">
       <div class="onb-icons">
         <div class="onb-domain" style="color:#f5c842;">💪<br/>BODY</div>
         <div class="onb-domain" style="color:#5fc1e8;">🧠<br/>MIND</div>
@@ -2091,20 +2278,20 @@ body::before {
       <h2 class="onb-title">Three Life Domains</h2>
       <p class="onb-body"><b>Body</b> tracks workouts, meals, sleep. <b>Mind</b> tracks quests, journal notes, daily check-ins. <b>Money</b> tracks income, spending, your real bank balance. Each levels independently — plus an overall character level.</p>
     </div>
-    <div class="onb-step hidden" data-step="3">
+    <div class="onb-step hidden" data-step="4">
       <div class="onb-icons" style="font-size:22px;">⚡<br/>×3.5 max</div>
       <h2 class="onb-title">The Loop</h2>
       <p class="onb-body">Log activity → earn XP → tier up. <b>Streaks</b> multiply your XP up to 3.5×. A 21-day workout streak doubles every XP gain. <b>Bosses</b> are milestones (e.g. 5-day workout streak) that grant big XP when defeated. <b>Tiers</b> unlock real perks like subscription discounts.</p>
     </div>
-    <div class="onb-step hidden" data-step="4">
+    <div class="onb-step hidden" data-step="5">
       <div class="onb-icons" style="font-size:34px;">🏦</div>
-      <h2 class="onb-title">Money & Bank</h2>
+      <h2 class="onb-title">Money &amp; Bank</h2>
       <p class="onb-body">Connect your bank in <b>Account → Connect Bank</b>. Gold mirrors your real available balance — 1 gold = $1. Transactions auto-categorize. Old history fills the charts; nothing inflates your gold.</p>
     </div>
-    <div class="onb-step hidden" data-step="5">
+    <div class="onb-step hidden" data-step="6">
       <div class="onb-icons" style="font-size:34px;">❓</div>
       <h2 class="onb-title">Help is one tap away</h2>
-      <p class="onb-body">Tap the <b>?</b> in the top bar anytime: replay this tour, send a bug report, submit a feature idea, or share the app with friends. The dev (that's me) reads every message.</p>
+      <p class="onb-body">Tap the <b>?</b> in the top bar anytime: replay this tour, send a bug report, submit a feature idea, or share the app with friends. The dev (that’s me) reads every message.</p>
     </div>
     <div class="onb-nav">
       <button class="onb-btn ghost" id="onb-prev" type="button">Back</button>
