@@ -670,6 +670,49 @@ async function logWorkout(type, durationMin, calories, notes) {
 }
 
 
+// === Hamburger nav menu + section sheets (Rules / What's New / Connections) ===
+function openNavMenu() {
+  const el = document.getElementById('nav-menu');
+  if (el) el.classList.remove('hidden');
+}
+function closeNavMenu() {
+  const el = document.getElementById('nav-menu');
+  if (el) el.classList.add('hidden');
+}
+
+function openRulesSheet() {
+  const el = document.getElementById('sheet-rules');
+  if (!el) return;
+  el.classList.remove('hidden');
+  try { renderRules(); } catch (e) { console.warn('renderRules failed', e); }
+}
+function closeRulesSheet() {
+  const el = document.getElementById('sheet-rules');
+  if (el) el.classList.add('hidden');
+}
+
+function openReleasesSheet() {
+  const el = document.getElementById('sheet-releases');
+  if (!el) return;
+  el.classList.remove('hidden');
+  try { renderReleases(); } catch (e) { console.warn('renderReleases failed', e); }
+}
+function closeReleasesSheet() {
+  const el = document.getElementById('sheet-releases');
+  if (el) el.classList.add('hidden');
+}
+
+function openConnectionsSheet() {
+  const el = document.getElementById('sheet-connections');
+  if (!el) return;
+  el.classList.remove('hidden');
+  try { renderConnections(); } catch (e) { console.warn('renderConnections failed', e); }
+}
+function closeConnectionsSheet() {
+  const el = document.getElementById('sheet-connections');
+  if (el) el.classList.add('hidden');
+}
+
 // === About / Help sheet + feedback submission ===
 function openHelpSheet() {
   // Stamp build version into the about line
@@ -1321,6 +1364,12 @@ async function loadAiUsage() {
 function renderAiUsage() {
   const el = document.getElementById('ai-usage-pill');
   if (!el) return;
+  if (isAdmin) {
+    el.textContent = 'AI · unlimited';
+    el.classList.remove('warn', 'empty');
+    el.classList.add('unlimited');
+    return;
+  }
   el.textContent = `AI ${aiUsage.used}/${aiUsage.limit}`;
   el.classList.toggle('warn', aiUsage.remaining <= 2 && aiUsage.remaining > 0);
   el.classList.toggle('empty', aiUsage.remaining <= 0);
@@ -1358,6 +1407,19 @@ function renderAccount() {
   const btn = document.getElementById('acct-action-btn');
   const trialNote = document.getElementById('acct-trial-note');
   if (!pill) return;
+
+  // Admin / owner override — bypass FREE/TRIAL/ACTIVE pill, hide billing buttons
+  if (isAdmin) {
+    pill.textContent = 'OWNER';
+    pill.className = 'acct-status-pill owner';
+    if (tierEl) tierEl.textContent = 'ForgePoint Industries — full access';
+    if (btn) btn.style.display = 'none';
+    if (trialNote) trialNote.textContent = '';
+    const refSection = document.getElementById('referral-section');
+    if (refSection) refSection.style.display = 'none';
+    return;
+  }
+
   const s = subscription?.status || 'none';
   const tier = subscription?.tier;
   const labels = { none: 'FREE', trialing: 'TRIAL', active: 'ACTIVE', past_due: 'PAST DUE', canceled: 'CANCELED', expired: 'EXPIRED' };
@@ -3347,6 +3409,43 @@ async function renderQuestsHistory() {
 
 // Wire up button + tabs + close
 document.addEventListener('DOMContentLoaded', () => {
+  // === Hamburger menu wiring ===
+  const menuBtn = document.getElementById('menu-btn');
+  if (menuBtn) menuBtn.addEventListener('click', openNavMenu);
+  const navCloseBtn = document.getElementById('nav-menu-close');
+  if (navCloseBtn) navCloseBtn.addEventListener('click', closeNavMenu);
+
+  // Each nav-menu-item routes to its target sheet
+  document.querySelectorAll('.nav-menu-item').forEach((b) => {
+    b.addEventListener('click', () => {
+      const target = b.dataset.nav;
+      closeNavMenu();
+      switch (target) {
+        case 'history': openHistory(); break;
+        case 'social': openSocialSheet(); break;
+        case 'rules': openRulesSheet(); break;
+        case 'releases': openReleasesSheet(); break;
+        case 'connections': openConnectionsSheet(); break;
+        case 'account': openAccountSheet(); break;
+        case 'help': openHelpSheet(); break;
+      }
+    });
+  });
+
+  // Wire close buttons inside each new sheet
+  const rulesSheet = document.getElementById('sheet-rules');
+  if (rulesSheet) {
+    rulesSheet.querySelectorAll('[data-close], .sheet-close').forEach((b) => b.addEventListener('click', closeRulesSheet));
+  }
+  const releasesSheet = document.getElementById('sheet-releases');
+  if (releasesSheet) {
+    releasesSheet.querySelectorAll('[data-close], .sheet-close').forEach((b) => b.addEventListener('click', closeReleasesSheet));
+  }
+  const connSheet = document.getElementById('sheet-connections');
+  if (connSheet) {
+    connSheet.querySelectorAll('[data-close], .sheet-close').forEach((b) => b.addEventListener('click', closeConnectionsSheet));
+  }
+
   // History sheet open + close + tab switching
   const historyBtn = document.getElementById('history-btn');
   if (historyBtn) historyBtn.addEventListener('click', openHistory);
