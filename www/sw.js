@@ -1,7 +1,7 @@
 // Game of Life service worker — Claude-style update flow.
 // New SW installs in the background. Client posts {type:'SKIP_WAITING'} when
 // the user taps "Update", we skipWaiting + claim, page reloads → new version.
-const CACHE = 'game101-v53';
+const CACHE = 'game101-v54';
 const ASSETS = [
   '/',
   '/index.html',

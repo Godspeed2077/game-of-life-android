@@ -3273,6 +3273,98 @@ async function enablePushWeb() {
   try { await supa.functions.invoke('send-push', { body: { title: 'Game of Life connected', body: 'Push notifications are live.', url: '/' } }); } catch {}
 }
 
+// Custom modal for ntfy setup. Native confirm() renders text as non-selectable —
+// users can\'t copy the topic, and characters like lowercase l / uppercase I / lowercase i
+// are indistinguishable. This modal shows the topic in a monospace, selectable code box
+// with a one-tap Copy button.
+function showNtfyTopicModal(topic) {
+  return new Promise((resolve) => {
+    // Remove any stale instance
+    const stale = document.getElementById('ntfy-modal');
+    if (stale) stale.remove();
+
+    const wrap = document.createElement('div');
+    wrap.id = 'ntfy-modal';
+    wrap.style.cssText = 'position:fixed; inset:0; z-index:9997; background:rgba(7,9,18,0.85); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; padding:20px; padding-top:max(20px, env(safe-area-inset-top)); padding-bottom:max(20px, env(safe-area-inset-bottom)); font-family:Inter,system-ui,sans-serif; color:#e8eaef;';
+
+    const safeTopic = topic.replace(/[&<>"\']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    wrap.innerHTML = (
+      '<div style="background:linear-gradient(180deg,#11162a,#0a0e1a); border:1px solid rgba(245,200,66,0.3); border-radius:14px; padding:22px 20px; max-width:440px; width:100%; max-height:calc(100vh - 40px); overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.7);">' +
+        '<div style="font-family:\'Cinzel\', serif; font-size:14px; letter-spacing:0.16em; color:#f5c842; margin-bottom:6px;">PUSH SETUP</div>' +
+        '<h3 style="margin:0 0 12px; font-size:18px; color:#e8eaef;">Standard push not available</h3>' +
+        '<p style="font-size:13px; color:#a4adc4; line-height:1.55; margin:0 0 14px;">We\'ll use <b>ntfy.sh</b> instead — a free, open push service that works without Google Play Services.</p>' +
+
+        '<div style="font-family:\'Cinzel\', serif; font-size:11px; letter-spacing:0.16em; color:#f5c842; margin:18px 0 8px;">YOUR TOPIC NAME</div>' +
+        '<div style="font-size:11px; color:#8b94b8; margin-bottom:8px; line-height:1.5;">Tap inside to select, or use the button to copy.</div>' +
+        '<div style="display:flex; gap:8px; align-items:stretch;">' +
+          '<input type="text" id="ntfy-topic-text" value="' + safeTopic + '" readonly ' +
+            'style="flex:1; min-width:0; padding:12px 14px; border-radius:8px; border:1px solid rgba(245,200,66,0.45); background:rgba(7,9,18,0.7); color:#f5c842; ' +
+            'font-family:\'JetBrains Mono\', \'Courier New\', monospace; font-size:14px; letter-spacing:0.05em; ' +
+            'box-sizing:border-box; -webkit-user-select:all; user-select:all;" />' +
+          '<button type="button" id="ntfy-copy-btn" ' +
+            'style="background:linear-gradient(135deg,#f5c842,#b89531); color:#070912; border:none; padding:0 16px; border-radius:8px; ' +
+            'font-family:\'Cinzel\',serif; font-size:11px; letter-spacing:0.14em; font-weight:700; cursor:pointer; white-space:nowrap;">COPY</button>' +
+        '</div>' +
+        '<div id="ntfy-copy-msg" style="font-size:11px; color:#6ee7a8; margin-top:6px; min-height:14px;"></div>' +
+
+        '<div style="font-family:\'Cinzel\', serif; font-size:11px; letter-spacing:0.16em; color:#f5c842; margin:22px 0 8px;">STEPS</div>' +
+        '<ol style="margin:0; padding-left:20px; font-size:13px; line-height:1.7; color:#e8eaef;">' +
+          '<li>Install <b>ntfy</b> from <b>F-Droid</b> (or the Play Store)</li>' +
+          '<li>Open it, tap <b>+</b>, choose <b>Subscribe to topic</b></li>' +
+          '<li>Paste the topic name (use the COPY button above)</li>' +
+          '<li>Leave <b>Use another server</b> unchecked</li>' +
+          '<li>Come back here and tap CONTINUE — we\'ll send a test in 5 sec</li>' +
+        '</ol>' +
+
+        '<div style="display:flex; gap:8px; margin-top:24px;">' +
+          '<button type="button" id="ntfy-cancel-btn" ' +
+            'style="flex:1; background:transparent; color:#a4adc4; border:1px solid rgba(255,255,255,0.15); padding:12px; border-radius:8px; ' +
+            'font-family:\'Cinzel\',serif; font-size:12px; letter-spacing:0.14em; font-weight:600; cursor:pointer;">CANCEL</button>' +
+          '<button type="button" id="ntfy-continue-btn" ' +
+            'style="flex:2; background:linear-gradient(135deg,#5fc1e8,#2d7ba3); color:#070912; border:none; padding:12px; border-radius:8px; ' +
+            'font-family:\'Cinzel\',serif; font-size:12px; letter-spacing:0.14em; font-weight:700; cursor:pointer;">CONTINUE</button>' +
+        '</div>' +
+      '</div>'
+    );
+    document.body.appendChild(wrap);
+
+    const topicEl = wrap.querySelector('#ntfy-topic-text');
+    const copyBtn = wrap.querySelector('#ntfy-copy-btn');
+    const copyMsg = wrap.querySelector('#ntfy-copy-msg');
+    const cancelBtn = wrap.querySelector('#ntfy-cancel-btn');
+    const continueBtn = wrap.querySelector('#ntfy-continue-btn');
+
+    // Tapping the field selects all
+    topicEl.addEventListener('focus', () => topicEl.select());
+    topicEl.addEventListener('click', () => topicEl.select());
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(topic);
+        } else {
+          // Fallback for old WebViews
+          topicEl.select();
+          document.execCommand('copy');
+        }
+        copyMsg.textContent = '✓ Copied — paste it into the ntfy app';
+        copyBtn.textContent = 'COPIED';
+        setTimeout(() => { copyBtn.textContent = 'COPY'; copyMsg.textContent = ''; }, 2500);
+      } catch (e) {
+        copyMsg.style.color = '#e74c3c';
+        copyMsg.textContent = 'Copy failed — long-press the field to select';
+      }
+    });
+
+    const cleanup = (result) => {
+      try { wrap.remove(); } catch {}
+      resolve(result);
+    };
+    cancelBtn.addEventListener('click', () => cleanup(false));
+    continueBtn.addEventListener('click', () => cleanup(true));
+  });
+}
+
 // ntfy.sh fallback for devices without Web Push (GrapheneOS, work-locked, etc.)
 // User installs ntfy from F-Droid (or any UnifiedPush client), creates a topic,
 // and we route their notifications via ntfy.sh instead of Web Push.
@@ -3289,16 +3381,7 @@ async function enablePushNtfy() {
   } catch {}
   const topic = existingTopic || ('gol-' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10));
   const endpoint = 'https://ntfy.sh/' + topic;
-  const proceed = confirm(
-    'Standard push not available on this device.\n\n' +
-    "We'll use ntfy.sh instead — a free, open push service that works without Google Play Services.\n\n" +
-    'Steps:\n' +
-    '1. Install "ntfy" from F-Droid (or Play Store)\n' +
-    '2. Open it, tap "+", choose "Subscribe to topic"\n' +
-    '3. Enter this topic name: ' + topic + '\n' +
-    '4. Leave "Use another server" unchecked\n\n' +
-    'Continue?'
-  );
+  const proceed = await showNtfyTopicModal(topic);
   if (!proceed) return;
   const { error } = await supa.from('push_subscriptions').upsert({
     user_id: user.id, endpoint, p256dh: null, auth: null,
