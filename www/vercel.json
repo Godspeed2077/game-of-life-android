@@ -1,0 +1,14 @@
+{
+  "redirects": [
+    {
+      "source": "/download.apk",
+      "destination": "https://github.com/Godspeed2077/game-of-life-android/releases/latest/download/game-of-life.apk",
+      "permanent": false
+    },
+    {
+      "source": "/apk",
+      "destination": "https://github.com/Godspeed2077/game-of-life-android/releases/latest/download/game-of-life.apk",
+      "permanent": false
+    }
+  ]
+}
