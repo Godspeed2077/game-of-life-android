@@ -2871,7 +2871,23 @@ let onbNameOnly = false;   // backfill mode — only show step 2
 const NAME_RE = /^[A-Za-z0-9 _-]{2,32}$/;
 
 function showOnboarding(forceReplay) {
-  if (!forceReplay && character && character.onboarding_completed_at && character.display_name) return;
+  // Gate: never re-show after onboarding has been completed unless the user explicitly replays.
+  // We check three signals so a flaky network or DB hiccup never re-triggers the tour:
+  //   1. character.onboarding_completed_at (DB flag, source of truth)
+  //   2. profile.display_name (means name picker was satisfied)
+  //   3. localStorage('gol_onboarded') (offline-resilient backup)
+  if (!forceReplay) {
+    try { if (localStorage.getItem('gol_onboarded') === '1') return; } catch (e) {}
+    const dbDone = !!(character && character.onboarding_completed_at);
+    const hasName = !!(profile && profile.display_name);
+    if (dbDone && hasName) {
+      try { localStorage.setItem('gol_onboarded', '1'); } catch (e) {}
+      return;
+    }
+  } else {
+    // Replay: clear the local cache so it does not block re-runs.
+    try { localStorage.removeItem('gol_onboarded'); } catch (e) {}
+  }
   onbNameOnly = false;
   onbStep = 1;
   prefillNameInput();
@@ -3011,6 +3027,8 @@ async function completeOnboarding() {
   const skip = document.getElementById('onb-skip');
   if (skip) skip.style.display = '';
   onbNameOnly = false;
+  // Write localStorage IMMEDIATELY so a refresh-before-DB-roundtrip doesn't re-show the tour.
+  try { localStorage.setItem('gol_onboarded', '1'); } catch (e) {}
   if (user) {
     try {
       await supa.from('characters').update({ onboarding_completed_at: new Date().toISOString() }).eq('user_id', user.id);
