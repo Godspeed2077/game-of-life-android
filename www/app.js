@@ -1710,10 +1710,6 @@ function renderLbRow(row, rank, metric) {
   </div>`;
 }
 
-function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
 // ---- Render ----
 function render() {
   if (!character) return;
