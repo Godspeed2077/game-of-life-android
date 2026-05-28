@@ -3347,6 +3347,20 @@ async function renderQuestsHistory() {
 
 // Wire up button + tabs + close
 document.addEventListener('DOMContentLoaded', () => {
+  // History sheet open + close + tab switching
+  const historyBtn = document.getElementById('history-btn');
+  if (historyBtn) historyBtn.addEventListener('click', openHistory);
+  const historyCloseBtn = document.getElementById('history-close');
+  if (historyCloseBtn) historyCloseBtn.addEventListener('click', closeHistory);
+  document.querySelectorAll('.history-tab').forEach((t) => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.history-tab').forEach((x) => x.classList.remove('active'));
+      t.classList.add('active');
+      historyTab = t.dataset.htab;
+      renderHistory();
+    });
+  });
+
   // About / Help sheet open button
   const helpBtn = document.getElementById('help-btn');
   if (helpBtn) helpBtn.addEventListener('click', openHelpSheet);
