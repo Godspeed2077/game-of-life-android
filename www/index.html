@@ -1290,6 +1290,74 @@ body::before {
   border-color: rgba(95,193,232,0.3);
 }
 
+
+/* === Additional Resources styling === */
+.resource-hub-card {
+  display: grid; grid-template-columns: 40px 1fr 14px;
+  align-items: center; gap: 14px;
+  background: linear-gradient(180deg, rgba(17,22,42,0.7), rgba(10,14,26,0.7));
+  border: 1px solid rgba(245,200,66,0.18); border-radius: 12px;
+  padding: 16px; text-align: left; cursor: pointer;
+  color: var(--text); font-family: Inter, system-ui, sans-serif;
+  transition: border-color 120ms, transform 120ms;
+}
+.resource-hub-card:hover { border-color: var(--gold); transform: translateY(-1px); }
+.resource-hub-card:active { transform: translateY(0); }
+.r-hub-icon { font-size: 26px; text-align: center; }
+.r-hub-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.r-hub-title { font-family: 'Cinzel', serif; font-size: 15px; letter-spacing: 0.1em; color: var(--gold); }
+.r-hub-sub { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.r-hub-arrow { color: var(--cyan); font-size: 22px; font-weight: 300; }
+
+.recipe-card {
+  display: flex; flex-direction: column; gap: 8px;
+  background: linear-gradient(180deg, rgba(17,22,42,0.7), rgba(10,14,26,0.7));
+  border: 1px solid rgba(95,193,232,0.2); border-radius: 12px;
+  padding: 14px 16px; cursor: pointer; text-align: left;
+  color: var(--text); font-family: Inter, system-ui, sans-serif;
+  transition: border-color 120ms, transform 120ms;
+}
+.recipe-card:hover { border-color: var(--cyan); transform: translateY(-1px); }
+.recipe-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.recipe-card-title { font-family: 'Cinzel', serif; font-size: 14px; letter-spacing: 0.08em; color: var(--gold); line-height: 1.3; }
+.recipe-card-meal { font-size: 10px; color: var(--cyan); letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; flex-shrink: 0; }
+.recipe-card-stats { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 11px; color: var(--muted); }
+.recipe-card-stat { display: inline-flex; align-items: center; gap: 4px; }
+.recipe-card-stat b { color: var(--text); font-weight: 600; }
+
+.recipe-detail-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  margin-bottom: 18px;
+}
+.recipe-detail-stat {
+  background: rgba(95,193,232,0.08); border: 1px solid rgba(95,193,232,0.2); border-radius: 8px;
+  padding: 10px 8px; text-align: center;
+}
+.recipe-detail-stat-num { font-family: 'Cinzel', serif; font-size: 16px; color: var(--gold); font-weight: 600; }
+.recipe-detail-stat-label { font-size: 9px; color: var(--muted); letter-spacing: 0.16em; text-transform: uppercase; margin-top: 2px; }
+
+.recipe-section {
+  font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em;
+  color: var(--gold); margin: 22px 0 10px;
+}
+.recipe-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; color: var(--text); }
+.recipe-list li { margin-bottom: 4px; }
+.recipe-sub-block {
+  background: rgba(245,200,66,0.06); border-left: 2px solid var(--gold);
+  padding: 12px 14px; border-radius: 0 8px 8px 0;
+  font-size: 12px; line-height: 1.6; color: var(--text);
+}
+.recipe-sub-block b { color: var(--gold); }
+
+.sheet-back {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent; border: 1px solid rgba(95,193,232,0.3); border-radius: 6px;
+  color: var(--cyan); padding: 5px 9px;
+  font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 0.18em;
+  cursor: pointer; margin-right: 8px;
+}
+.sheet-back:hover { background: rgba(95,193,232,0.08); border-color: var(--cyan); }
+
 </style>
 </head>
 <body>
@@ -1508,6 +1576,11 @@ body::before {
         <span class="nav-icon">👤</span>
         <span class="nav-label">Account</span>
         <span class="nav-sub">Identity · billing · referrals · domains</span>
+      </button>
+      <button class="nav-menu-item" data-nav="resources" type="button">
+        <span class="nav-icon">📚</span>
+        <span class="nav-label">Additional Resources</span>
+        <span class="nav-sub">Recipes · guides · references</span>
       </button>
       <button class="nav-menu-item" data-nav="help" type="button">
         <span class="nav-icon">❓</span>
@@ -2253,6 +2326,63 @@ body::before {
   <div class="sheet-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));">
     <div class="conn-list" id="conn-list"></div>
   </div>
+</div>
+
+<!-- Additional Resources hub -->
+<div id="sheet-resources" class="sheet hidden" data-sheet-id="resources">
+  <div class="sheet-head">
+    <div class="sheet-title">Additional Resources</div>
+    <button class="sheet-close" type="button" data-close>×</button>
+  </div>
+  <div class="sheet-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));">
+    <div style="font-size: 11px; color: var(--muted); margin-bottom: 16px;">
+      Reference material to help you live the game. Tap a category to dive in.
+    </div>
+    <div id="resources-hub-list" style="display:flex; flex-direction:column; gap:10px;">
+      <button class="resource-hub-card" type="button" data-resource="recipes">
+        <span class="r-hub-icon">🍽️</span>
+        <span class="r-hub-body">
+          <span class="r-hub-title">Recipes</span>
+          <span class="r-hub-sub">High-protein, high-fiber, low-calorie meals that still fill you up. With substitutions.</span>
+        </span>
+        <span class="r-hub-arrow">›</span>
+      </button>
+    </div>
+    <div style="font-size: 11px; color: var(--muted); font-style: italic; margin-top: 24px; text-align: center;">
+      More resources coming soon.
+    </div>
+  </div>
+</div>
+
+<!-- Recipes list sheet -->
+<div id="sheet-recipes" class="sheet hidden" data-sheet-id="recipes">
+  <div class="sheet-head">
+    <button class="sheet-back" type="button" id="recipes-back-btn" aria-label="Back to Resources">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <span>BACK</span>
+    </button>
+    <div class="sheet-title">Recipes</div>
+    <button class="sheet-close" type="button" data-close>×</button>
+  </div>
+  <div class="sheet-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));">
+    <div style="font-size: 11px; color: var(--muted); margin-bottom: 12px;">
+      Every recipe: 30g+ protein · 8g+ fiber · under 500 cal · genuinely filling.
+    </div>
+    <div id="recipes-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+  </div>
+</div>
+
+<!-- Single-recipe detail sheet -->
+<div id="sheet-recipe-detail" class="sheet hidden" data-sheet-id="recipe-detail">
+  <div class="sheet-head">
+    <button class="sheet-back" type="button" id="recipe-detail-back-btn" aria-label="Back to Recipes">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <span>BACK</span>
+    </button>
+    <div class="sheet-title" id="recipe-detail-title">Recipe</div>
+    <button class="sheet-close" type="button" data-close>×</button>
+  </div>
+  <div class="sheet-body" id="recipe-detail-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));"></div>
 </div>
 
 <div id="sheet-account" class="sheet hidden" data-sheet-id="account">

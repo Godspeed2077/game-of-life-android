@@ -684,33 +684,307 @@ function openRulesSheet() {
   const el = document.getElementById('sheet-rules');
   if (!el) return;
   el.classList.remove('hidden');
+  el.classList.add('show');
+  el.style.display = '';
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.add('show');
   try { renderRules(); } catch (e) { console.warn('renderRules failed', e); }
 }
 function closeRulesSheet() {
   const el = document.getElementById('sheet-rules');
-  if (el) el.classList.add('hidden');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.remove('show');
 }
 
 function openReleasesSheet() {
   const el = document.getElementById('sheet-releases');
   if (!el) return;
   el.classList.remove('hidden');
+  el.classList.add('show');
+  el.style.display = '';
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.add('show');
   try { renderReleases(); } catch (e) { console.warn('renderReleases failed', e); }
 }
 function closeReleasesSheet() {
   const el = document.getElementById('sheet-releases');
-  if (el) el.classList.add('hidden');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.remove('show');
 }
 
 function openConnectionsSheet() {
   const el = document.getElementById('sheet-connections');
   if (!el) return;
   el.classList.remove('hidden');
+  el.classList.add('show');
+  el.style.display = '';
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.add('show');
   try { renderConnections(); } catch (e) { console.warn('renderConnections failed', e); }
 }
 function closeConnectionsSheet() {
   const el = document.getElementById('sheet-connections');
-  if (el) el.classList.add('hidden');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.remove('show');
+}
+
+// === Additional Resources: hardcoded recipe library ===
+const RECIPES = [
+  {
+    id: 'gy-power-bowl',
+    title: 'Greek Yogurt Power Bowl',
+    meal: 'Breakfast',
+    calories: 380, protein_g: 38, fiber_g: 11, prep_min: 5,
+    description: 'A 5-minute breakfast that hits 38g of protein and over 10g of fiber. Berries, seeds, and high-fiber cereal do all the heavy lifting.',
+    ingredients: [
+      '1 cup nonfat plain Greek yogurt (0%)',
+      '1/2 cup raspberries or mixed berries',
+      '1/4 cup high-fiber cereal (e.g., Fiber One Original) OR 1/3 cup raw rolled oats',
+      '1 Tbsp chia seeds',
+      '1 Tbsp PB2 powdered peanut butter',
+      'Optional: drizzle of honey or stevia to taste'
+    ],
+    steps: [
+      'Spoon yogurt into a bowl.',
+      'Sprinkle in the chia seeds and PB powder, give it a quick stir so it does not clump.',
+      'Top with berries and the high-fiber cereal.',
+      'Eat. Refrigerate any leftover for up to 24 hours — the cereal will soften but still tastes good.'
+    ],
+    subs: [
+      'PB2 → 1 Tbsp natural almond butter (adds ~80 cal but more healthy fats).',
+      'Raspberries → diced apple + cinnamon, or blackberries (any berry is fine).',
+      'Chia → 1 Tbsp ground flaxseed.',
+      'Greek yogurt → nonfat cottage cheese (blend for a smoother bowl).',
+      'High-fiber cereal → 1/3 cup steel-cut oats cooked overnight in the yogurt.'
+    ]
+  },
+  {
+    id: 'tuna-bb-wraps',
+    title: 'Spicy Tuna & Black Bean Lettuce Wraps',
+    meal: 'Lunch',
+    calories: 420, protein_g: 42, fiber_g: 14, prep_min: 10,
+    description: 'No cooking. Two cans, a knife, and a spoon. Lean tuna + fiber-heavy black beans wrapped in crunchy romaine.',
+    ingredients: [
+      '1 can (5 oz) tuna in water, drained',
+      '1/2 cup canned black beans, rinsed and drained',
+      '2 Tbsp plain nonfat Greek yogurt',
+      '1 tsp sriracha (more to taste)',
+      '1 tsp lime juice',
+      '1/4 ripe avocado, diced',
+      '4 large romaine or butter lettuce leaves',
+      'Pinch of salt, fresh cracked pepper, optional chopped cilantro'
+    ],
+    steps: [
+      'In a bowl, stir together tuna, black beans, Greek yogurt, sriracha, lime juice, salt, and pepper.',
+      'Fold in the diced avocado last so it does not turn to mush.',
+      'Spoon the mixture into the lettuce leaves. Top with cilantro.',
+      'Eat with hands like a taco. Makes 4 wraps — that is one serving.'
+    ],
+    subs: [
+      'Tuna → canned chicken breast or canned wild salmon.',
+      'Black beans → chickpeas (slightly more carb, equally filling).',
+      'Romaine → collard green leaves (blanched 30 sec) or cabbage leaves for crunchier wraps.',
+      'Avocado → skip and add 1 Tbsp olive oil to the mix; or use 2 Tbsp guacamole.',
+      'Sriracha → hot sauce of choice, or 1/4 tsp red pepper flakes.'
+    ]
+  },
+  {
+    id: 'chickpea-buddha',
+    title: 'Chickpea-Quinoa Buddha Bowl',
+    meal: 'Lunch / Dinner',
+    calories: 480, protein_g: 32, fiber_g: 16, prep_min: 25,
+    description: 'A solid plant-forward meal with crunchy roasted chickpeas, quinoa, and a tahini-lemon dressing. 16g of fiber.',
+    ingredients: [
+      '3/4 cup cooked quinoa (about 1/4 cup dry)',
+      '1/2 cup canned chickpeas, drained and patted dry',
+      '1 cup broccoli florets',
+      '1/4 cup shelled edamame (frozen, thawed)',
+      'Large handful baby spinach',
+      'Dressing: 1 Tbsp tahini + 1 Tbsp lemon juice + 1 Tbsp water + 1/4 tsp garlic powder + salt',
+      '1 tsp olive oil, salt, smoked paprika, cumin (for roasting)'
+    ],
+    steps: [
+      'Preheat oven to 400°F (200°C). On a sheet pan, toss chickpeas + broccoli with olive oil, salt, paprika, cumin.',
+      'Roast 18–20 min until chickpeas are crisp and broccoli is charred at the tips.',
+      'While that roasts, cook quinoa (or use leftover). Whisk dressing.',
+      'Assemble bowl: spinach base, quinoa, roasted veg, edamame. Drizzle dressing on top.'
+    ],
+    subs: [
+      'Quinoa → farro, brown rice, or barley (cook times vary; check package).',
+      'Chickpeas → black beans, lentils, or 4 oz baked tofu cubes.',
+      'Broccoli → cauliflower, brussels sprouts, or kale (kale only needs 8 min in the oven).',
+      'Tahini → 2 Tbsp Greek yogurt + lemon juice + garlic for a lower-cal dressing.',
+      'Edamame → peas or extra chickpeas.'
+    ]
+  },
+  {
+    id: 'turkey-chili',
+    title: 'Lean Turkey Chili (Meal Prep)',
+    meal: 'Dinner',
+    calories: 390, protein_g: 38, fiber_g: 13, prep_min: 35,
+    description: 'One pot, four servings. Per serving still hits high protein and fiber. Tastes better the next day.',
+    ingredients: [
+      '1.25 lb 99% lean ground turkey',
+      '1 medium onion, chopped',
+      '1 red or green bell pepper, chopped',
+      '2 cloves garlic, minced',
+      '1 can (15 oz) black beans, drained and rinsed',
+      '1 can (15 oz) kidney beans, drained and rinsed',
+      '1 can (14.5 oz) fire-roasted diced tomatoes',
+      '1 can (8 oz) tomato sauce, no sugar added',
+      '2 Tbsp chili powder',
+      '1 tsp ground cumin',
+      '1 tsp smoked paprika',
+      '1/2 tsp salt, pepper to taste',
+      'Optional: 1 tsp olive oil, chopped cilantro for garnish'
+    ],
+    steps: [
+      'Heat olive oil in a large pot over medium-high. Add onion + bell pepper, cook 4 min.',
+      'Add garlic, cook 30 seconds. Push veggies aside and add turkey. Break it up with a spoon and brown 5–6 min.',
+      'Stir in chili powder, cumin, paprika, salt, pepper — let bloom 30 seconds.',
+      'Add both cans of beans, diced tomatoes (with liquid), and tomato sauce. Stir, bring to a simmer.',
+      'Reduce heat, simmer uncovered 20 min, stirring occasionally. Taste and adjust salt.',
+      'Divide into 4 containers. Refrigerate up to 4 days; freezes well.'
+    ],
+    subs: [
+      'Turkey → 99% lean ground chicken, OR 1.25 lb extra-firm tofu crumbled (drain well first).',
+      'Kidney beans → pinto beans or great northern.',
+      'Bell pepper → zucchini (added in last 5 min so it does not turn to mush) or chopped carrot (added with onion).',
+      'Fire-roasted tomatoes → regular diced tomatoes + 1/2 tsp extra smoked paprika.',
+      'Add 1 cup cooked corn for sweetness (adds ~50 cal/serving).'
+    ]
+  },
+  {
+    id: 'cottage-pizza-toast',
+    title: 'Cottage Cheese Pizza Toast',
+    meal: 'Snack / Lunch',
+    calories: 360, protein_g: 35, fiber_g: 10, prep_min: 8,
+    description: 'Pizza energy, real protein. Cottage cheese is the unsung hero — melts almost like ricotta but with 2x the protein.',
+    ingredients: [
+      '2 slices high-fiber bread (e.g., Dave\'s Killer Power Seed, ~110 cal / 5g fiber each)',
+      '1/2 cup low-fat 1% cottage cheese',
+      '1/3 cup no-sugar-added marinara sauce',
+      '4–5 thinly sliced cremini or button mushrooms',
+      'Handful baby spinach (about 1/2 cup, packed)',
+      '2 Tbsp grated parmesan cheese',
+      'Pinch of red pepper flakes, dried oregano',
+      'Optional: 1/4 tsp garlic powder'
+    ],
+    steps: [
+      'Toast the bread until lightly golden but still flexible.',
+      'Spread marinara over each slice (1–12 Tbsp per slice).',
+      'Spoon cottage cheese on top — break it up so it covers evenly.',
+      'Layer baby spinach and mushrooms on top.',
+      'Sprinkle parmesan, red pepper flakes, oregano, garlic powder.',
+      'Broil 3–4 minutes on high, watch closely until cheese bubbles and edges brown. Eat hot.'
+    ],
+    subs: [
+      'Cottage cheese → part-skim ricotta (slightly higher cal) OR Greek yogurt + 1 tsp olive oil.',
+      'High-fiber bread → whole wheat English muffin (split) or a low-carb tortilla folded.',
+      'Marinara → 2 Tbsp pesto or roasted red pepper spread.',
+      'Mushrooms → sundried tomatoes, sliced bell pepper, or thinly sliced zucchini.',
+      'Parmesan → nutritional yeast (dairy-free) or a sprinkle of feta.'
+    ]
+  }
+];
+
+function openResourcesSheet() {
+  const el = document.getElementById('sheet-resources');
+  if (!el) return;
+  el.classList.remove('hidden');
+  el.classList.add('show');
+  el.style.display = '';
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.add('show');
+}
+function closeResourcesSheet() {
+  const el = document.getElementById('sheet-resources');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.remove('show');
+}
+
+function openRecipesSheet() {
+  const el = document.getElementById('sheet-recipes');
+  if (!el) return;
+  renderRecipesList();
+  el.classList.remove('hidden');
+  el.classList.add('show');
+  el.style.display = '';
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.add('show');
+}
+function closeRecipesSheet() {
+  const el = document.getElementById('sheet-recipes');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.remove('show');
+}
+function renderRecipesList() {
+  const list = document.getElementById('recipes-list');
+  if (!list) return;
+  list.innerHTML = RECIPES.map((r) => (
+    '<button class="recipe-card" type="button" data-recipe-id="' + r.id + '">' +
+      '<div class="recipe-card-head">' +
+        '<div class="recipe-card-title">' + r.title + '</div>' +
+        '<div class="recipe-card-meal">' + r.meal + '</div>' +
+      '</div>' +
+      '<div style="font-size: 12px; color: var(--muted); line-height: 1.5;">' + r.description + '</div>' +
+      '<div class="recipe-card-stats">' +
+        '<span class="recipe-card-stat"><b>' + r.calories + '</b> cal</span>' +
+        '<span class="recipe-card-stat"><b>' + r.protein_g + 'g</b> protein</span>' +
+        '<span class="recipe-card-stat"><b>' + r.fiber_g + 'g</b> fiber</span>' +
+        '<span class="recipe-card-stat"><b>' + r.prep_min + ' min</b></span>' +
+      '</div>' +
+    '</button>'
+  )).join('');
+  list.querySelectorAll('.recipe-card').forEach((b) => {
+    b.addEventListener('click', () => openRecipeDetail(b.dataset.recipeId));
+  });
+}
+
+function openRecipeDetail(id) {
+  const r = RECIPES.find((x) => x.id === id);
+  if (!r) return;
+  const titleEl = document.getElementById('recipe-detail-title');
+  const bodyEl = document.getElementById('recipe-detail-body');
+  if (titleEl) titleEl.textContent = r.title;
+  if (bodyEl) {
+    bodyEl.innerHTML =
+      '<div style="font-size: 10px; color: var(--cyan); letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">' + r.meal + '</div>' +
+      '<div style="font-size: 13px; color: var(--text); line-height: 1.6; margin-bottom: 18px;">' + r.description + '</div>' +
+      '<div class="recipe-detail-stats">' +
+        '<div class="recipe-detail-stat"><div class="recipe-detail-stat-num">' + r.calories + '</div><div class="recipe-detail-stat-label">Cal</div></div>' +
+        '<div class="recipe-detail-stat"><div class="recipe-detail-stat-num">' + r.protein_g + 'g</div><div class="recipe-detail-stat-label">Protein</div></div>' +
+        '<div class="recipe-detail-stat"><div class="recipe-detail-stat-num">' + r.fiber_g + 'g</div><div class="recipe-detail-stat-label">Fiber</div></div>' +
+        '<div class="recipe-detail-stat"><div class="recipe-detail-stat-num">' + r.prep_min + '</div><div class="recipe-detail-stat-label">Min</div></div>' +
+      '</div>' +
+      '<div class="recipe-section">INGREDIENTS</div>' +
+      '<ul class="recipe-list">' + r.ingredients.map((i) => '<li>' + i + '</li>').join('') + '</ul>' +
+      '<div class="recipe-section">STEPS</div>' +
+      '<ol class="recipe-list">' + r.steps.map((s) => '<li>' + s + '</li>').join('') + '</ol>' +
+      '<div class="recipe-section">SUBSTITUTIONS</div>' +
+      '<div class="recipe-sub-block">' +
+        r.subs.map((s) => '<div style="margin-bottom: 6px;">• ' + s + '</div>').join('') +
+      '</div>';
+  }
+  const el = document.getElementById('sheet-recipe-detail');
+  if (el) {
+    el.classList.remove('hidden');
+    el.classList.add('show');
+    el.style.display = '';
+  }
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.add('show');
+}
+function closeRecipeDetail() {
+  const el = document.getElementById('sheet-recipe-detail');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.remove('show');
 }
 
 // === About / Help sheet + feedback submission ===
@@ -3427,6 +3701,7 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'releases': openReleasesSheet(); break;
         case 'connections': openConnectionsSheet(); break;
         case 'account': openAccountSheet(); break;
+        case 'resources': openResourcesSheet(); break;
         case 'help': openHelpSheet(); break;
       }
     });
@@ -3444,6 +3719,33 @@ document.addEventListener('DOMContentLoaded', () => {
   const connSheet = document.getElementById('sheet-connections');
   if (connSheet) {
     connSheet.querySelectorAll('[data-close], .sheet-close').forEach((b) => b.addEventListener('click', closeConnectionsSheet));
+  }
+
+  // Additional Resources hub: close + clicking a hub card
+  const resourcesSheet = document.getElementById('sheet-resources');
+  if (resourcesSheet) {
+    resourcesSheet.querySelectorAll('[data-close], .sheet-close').forEach((b) => b.addEventListener('click', closeResourcesSheet));
+    resourcesSheet.querySelectorAll('.resource-hub-card').forEach((c) => {
+      c.addEventListener('click', () => {
+        const target = c.dataset.resource;
+        closeResourcesSheet();
+        if (target === 'recipes') openRecipesSheet();
+      });
+    });
+  }
+  // Recipes list: close + back to resources
+  const recipesSheet = document.getElementById('sheet-recipes');
+  if (recipesSheet) {
+    recipesSheet.querySelectorAll('[data-close], .sheet-close').forEach((b) => b.addEventListener('click', closeRecipesSheet));
+    const backBtn = document.getElementById('recipes-back-btn');
+    if (backBtn) backBtn.addEventListener('click', () => { closeRecipesSheet(); openResourcesSheet(); });
+  }
+  // Recipe detail: close + back to recipes list
+  const recipeDetailSheet = document.getElementById('sheet-recipe-detail');
+  if (recipeDetailSheet) {
+    recipeDetailSheet.querySelectorAll('[data-close], .sheet-close').forEach((b) => b.addEventListener('click', closeRecipeDetail));
+    const backBtn = document.getElementById('recipe-detail-back-btn');
+    if (backBtn) backBtn.addEventListener('click', () => { closeRecipeDetail(); openRecipesSheet(); });
   }
 
   // History sheet open + close + tab switching
