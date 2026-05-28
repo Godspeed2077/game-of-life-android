@@ -1234,6 +1234,37 @@ body::before {
   <div class="loading-dots"><span></span><span></span><span></span></div>
 </div>
 
+<!-- Fast-path: if no saved auth token, skip the boot loader entirely and show the landing immediately.
+     Also a 3s watchdog so a hung supabase fetch (Vanadium / strict-network browsers) can never trap us on the spinner. -->
+<script>
+(function () {
+  var KEY_PATTERN = /^sb-.*-auth-token$/;
+  var hasSession = false;
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && KEY_PATTERN.test(k) && localStorage.getItem(k)) { hasSession = true; break; }
+    }
+  } catch (e) {}
+  function showLanding() {
+    var l = document.getElementById('loading'); if (l) l.classList.add('hidden');
+    var a = document.getElementById('auth-screen'); if (a) a.classList.remove('hidden');
+  }
+  if (!hasSession) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showLanding);
+    else showLanding();
+  }
+  // Watchdog: never let LOADING persist more than 3 seconds.
+  setTimeout(function () {
+    var l = document.getElementById('loading');
+    var m = document.getElementById('main-app');
+    if (l && !l.classList.contains('hidden') && m && m.classList.contains('hidden')) {
+      showLanding();
+    }
+  }, 3000);
+})();
+</script>
+
 <!-- Landing / Auth screen (logged-out view) -->
 <div id="auth-screen" class="landing hidden">
   <nav class="landing-nav">
