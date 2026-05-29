@@ -389,8 +389,8 @@ body::before {
 .day-tile.fuel .day-tile-val { color: var(--gold); }
 .day-tile.steps .day-tile-val { color: var(--cyan); }
 .day-actions {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-  margin-top: 4px;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+  margin-top: 8px;
 }
 .day-action {
   background: var(--bg-1); border: 1px solid var(--line); color: var(--text);
@@ -405,6 +405,8 @@ body::before {
 @media (max-width: 480px) {
   .day-grid { grid-template-columns: repeat(2, 1fr); }
   .day-tile-val { font-size: 16px; }
+  /* Orphan tile (e.g., Calories when 5 tiles + 2 columns) spans the full width */
+  .day-grid > .day-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 /* Log sheet (slide-up) */
@@ -621,11 +623,14 @@ body::before {
 
 /* Streak tile */
 .streak-row {
-  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 6px; margin-top: 8px;
 }
+/* If empty, no extra space */
+.streak-row:empty { display: none; }
 .streak-pill {
   background: var(--bg-1); border: 1px solid var(--line); border-radius: 8px;
-  padding: 6px 10px; display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; display: flex; align-items: center; justify-content: center; gap: 6px;
   font-size: 11px;
 }
 .streak-pill.hot { border-color: var(--gold); background: rgba(245,200,66,0.05); }
