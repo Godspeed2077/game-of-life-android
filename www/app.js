@@ -987,6 +987,108 @@ function closeRecipeDetail() {
   if (bd) bd.classList.remove('show');
 }
 
+// === Data export sheet ===
+function openExportSheet() {
+  const el = document.getElementById('sheet-export');
+  if (!el) return;
+  el.classList.remove('hidden');
+  el.classList.add('show');
+  el.style.display = '';
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.add('show');
+  // Refresh the "last export" line from the audit table
+  loadLastExportTime();
+  // Reset the button state in case the user opens this twice in a row
+  const btn = document.getElementById('export-download-btn');
+  if (btn) { btn.disabled = false; }
+  const label = document.getElementById('export-btn-label');
+  if (label) label.textContent = 'Download my data (.json)';
+  const msg = document.getElementById('export-msg');
+  if (msg) { msg.textContent = ''; msg.style.color = ''; }
+}
+function closeExportSheet() {
+  const el = document.getElementById('sheet-export');
+  if (el) { el.classList.remove('show'); el.classList.add('hidden'); }
+  const bd = document.getElementById('sheet-backdrop');
+  if (bd) bd.classList.remove('show');
+}
+async function loadLastExportTime() {
+  const lineEl = document.getElementById('export-last');
+  if (!lineEl || !user) return;
+  try {
+    const { data } = await supa
+      .from('data_exports')
+      .select('exported_at')
+      .order('exported_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data && data.exported_at) {
+      const t = new Date(data.exported_at);
+      lineEl.textContent = 'Last export: ' + t.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    } else {
+      lineEl.textContent = 'No exports yet.';
+    }
+  } catch (e) {
+    console.warn('loadLastExportTime failed', e);
+  }
+}
+async function downloadExport() {
+  if (!user) return;
+  const btn = document.getElementById('export-download-btn');
+  const label = document.getElementById('export-btn-label');
+  const msg = document.getElementById('export-msg');
+  if (msg) { msg.textContent = ''; msg.style.color = ''; }
+  if (btn) btn.disabled = true;
+  if (label) label.textContent = 'Preparing your export…';
+  try {
+    const { data: { session } } = await supa.auth.getSession();
+    if (!session) throw new Error('not_signed_in');
+    const resp = await fetch(SUPABASE_URL + '/functions/v1/export-user-data', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + session.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})
+    });
+    if (resp.status === 429) {
+      const body = await resp.json().catch(() => ({}));
+      if (msg) { msg.style.color = 'var(--red)'; msg.textContent = body.message || 'You can export again in 24 hours.'; }
+      return;
+    }
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.error || ('HTTP ' + resp.status));
+    }
+    const blob = await resp.blob();
+    const sizeKB = Math.max(1, Math.round(blob.size / 1024));
+    // Filename comes from Content-Disposition; build a fallback in case the
+    // browser doesn't expose the header to fetch().
+    const cd = resp.headers.get('Content-Disposition') || '';
+    let filename = 'gameoflife-export.json';
+    const m = cd.match(/filename="([^"]+)"/);
+    if (m) filename = m[1];
+    // Trigger the download via a temporary <a>
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    if (msg) { msg.style.color = 'var(--green)'; msg.textContent = '✓ Downloaded ' + filename + ' (' + sizeKB.toLocaleString() + ' KB)'; }
+    if (label) label.textContent = 'Download again';
+    // Refresh the "last export" line
+    loadLastExportTime();
+  } catch (e) {
+    if (msg) { msg.style.color = 'var(--red)'; msg.textContent = 'Export failed: ' + (e?.message || e); }
+    console.warn('downloadExport failed', e);
+    if (label) label.textContent = 'Download my data (.json)';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // === About / Help sheet + feedback submission ===
 function openHelpSheet() {
   // Stamp build version into the about line
@@ -1572,7 +1674,6 @@ function openSheet(kind) {
 function closeSheet() {
   $('sheet').classList.remove('show');
   $('sheet-backdrop').classList.remove('show');
-  $('live-hr').style.display = 'none';
 }
 
 
@@ -3152,69 +3253,6 @@ $('suggest-quests-btn').addEventListener('click', async () => {
   finally { btn.disabled = false; btn.textContent = '✦ Suggest quests with AI'; }
 });
 
-// Web Bluetooth HR
-let hrSession = null;
-$('bt-pair-btn').addEventListener('click', async () => {
-  if (!navigator.bluetooth) { toast('Web Bluetooth not supported'); return; }
-  try {
-    const device = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
-    const server = await device.gatt.connect();
-    const service = await server.getPrimaryService('heart_rate');
-    const char = await service.getCharacteristic('heart_rate_measurement');
-    await char.startNotifications();
-    hrSession = { device, char, startedAt: Date.now(), readings: [], sum: 0, count: 0, max: 0, current: 0, timer: null, type: $('workout-type').value || 'other' };
-    char.addEventListener('characteristicvaluechanged', (e) => {
-      const v = e.target.value;
-      const flags = v.getUint8(0);
-      const bpm = (flags & 0x1) ? v.getUint16(1, true) : v.getUint8(1);
-      if (bpm > 0 && bpm < 250) {
-        hrSession.readings.push({ t: Date.now() - hrSession.startedAt, bpm });
-        hrSession.sum += bpm; hrSession.count += 1;
-        if (bpm > hrSession.max) hrSession.max = bpm;
-        hrSession.current = bpm;
-      }
-    });
-    ['meal','workout','money','email','boss','checkin','rule'].forEach(k => { const el = $('form-'+k); if (el) el.style.display = 'none'; });
-    $('live-hr').style.display = '';
-    $('sheet-title').textContent = 'Live Session';
-    hrSession.timer = setInterval(() => {
-      const elapsedS = Math.floor((Date.now() - hrSession.startedAt) / 1000);
-      const m = Math.floor(elapsedS / 60); const s = elapsedS % 60;
-      $('hr-bpm').textContent = hrSession.current || '—';
-      $('hr-avg').textContent = hrSession.count ? Math.round(hrSession.sum / hrSession.count) : '—';
-      $('hr-max').textContent = hrSession.max || '—';
-      $('hr-time').textContent = `${m}:${String(s).padStart(2,'0')}`;
-    }, 500);
-    toast(`Connected ${device.name || 'HR strap'}`);
-  } catch (e) { if (e.name !== 'NotFoundError') toast('Bluetooth: ' + (e.message || e.name)); }
-});
-$('hr-stop').addEventListener('click', async () => {
-  if (!hrSession) return;
-  clearInterval(hrSession.timer);
-  try { await hrSession.char.stopNotifications(); } catch {}
-  try { hrSession.device.gatt.disconnect(); } catch {}
-  const dur_s = Math.max(1, Math.floor((Date.now() - hrSession.startedAt) / 1000));
-  const avg = hrSession.count ? Math.round(hrSession.sum / hrSession.count) : null;
-  const max = hrSession.max || null;
-  let kcal = null;
-  if (avg) {
-    const perMin = Math.max(0, (-55.0969 + 0.6309 * avg + 0.1988 * 75 + 0.2017 * 30) / 4.184);
-    kcal = Math.round(perMin * (dur_s / 60));
-  }
-  const startedAt = new Date(hrSession.startedAt).toISOString();
-  const type = hrSession.type;
-  hrSession = null;
-  const { data: wRow } = await supa.from('workouts').insert({
-    user_id: user.id, type, source: 'bluetooth', started_at: startedAt,
-    duration_seconds: dur_s, avg_hr: avg, max_hr: max, calories: kcal
-  }).select().single();
-  await insertEvent('workout', 'bluetooth', { type, duration_seconds: dur_s, calories: kcal, avg_hr: avg, max_hr: max, workout_id: wRow?.id }, startedAt);
-  await recomputeAutoBosses();
-  toast(`Saved · ${Math.floor(dur_s/60)} min · avg ${avg || '—'} bpm`);
-  closeSheet();
-  await refreshAfterEvent();
-});
-
 // Push notifications — supports both Capacitor PushNotifications (FCM on Android)
 // and Web Push (PWA / iOS Safari / Chrome). Reads `kind` so the server can pick
 // the right delivery channel later.
@@ -3817,6 +3855,7 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'connections': openConnectionsSheet(); break;
         case 'account': openAccountSheet(); break;
         case 'resources': openResourcesSheet(); break;
+        case 'export': openExportSheet(); break;
         case 'help': openHelpSheet(); break;
       }
     });
@@ -3855,6 +3894,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const backBtn = document.getElementById('recipes-back-btn');
     if (backBtn) backBtn.addEventListener('click', () => { closeRecipesSheet(); openResourcesSheet(); });
   }
+  // Export sheet: close button + download click
+  const exportSheet = document.getElementById('sheet-export');
+  if (exportSheet) {
+    exportSheet.querySelectorAll('[data-close], .sheet-close').forEach((b) => b.addEventListener('click', closeExportSheet));
+  }
+  const exportBtn = document.getElementById('export-download-btn');
+  if (exportBtn) exportBtn.addEventListener('click', downloadExport);
+
   // Recipe detail: close + back to recipes list
   const recipeDetailSheet = document.getElementById('sheet-recipe-detail');
   if (recipeDetailSheet) {

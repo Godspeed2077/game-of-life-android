@@ -1587,6 +1587,11 @@ body::before {
         <span class="nav-label">Additional Resources</span>
         <span class="nav-sub">Recipes · guides · references</span>
       </button>
+      <button class="nav-menu-item" data-nav="export" type="button">
+        <span class="nav-icon">⤓</span>
+        <span class="nav-label">Export Data</span>
+        <span class="nav-sub">Download everything Game of Life knows about you</span>
+      </button>
       <button class="nav-menu-item" data-nav="help" type="button">
         <span class="nav-icon">❓</span>
         <span class="nav-label">About & Help</span>
@@ -1899,28 +1904,8 @@ body::before {
       <button type="button" class="btn btn-ghost" data-close>Cancel</button>
       <button type="submit" class="btn">Log Workout</button>
     </div>
-    <button type="button" class="media-btn" id="bt-pair-btn" style="margin-top:8px">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8l12 8-6 6V2l6 6L6 16"/></svg>
-      Or pair Bluetooth HR for a live session
-    </button>
   </form>
 
-  <!-- Live HR session (replaces sheet content while running) -->
-  <div id="live-hr" class="sheet-form" style="display:none">
-    <div style="text-align:center; padding: 20px 0;">
-      <div style="font-family: 'Cinzel', serif; letter-spacing: 0.18em; font-size: 12px; color: var(--gold);">LIVE SESSION</div>
-      <div id="hr-bpm" style="font-family: 'JetBrains Mono', monospace; font-size: 56px; font-weight: 700; color: var(--cyan); text-shadow: 0 0 24px rgba(95,193,232,0.5); margin: 12px 0;">—</div>
-      <div style="font-size: 11px; color: var(--muted); letter-spacing: 0.18em;">BPM</div>
-    </div>
-    <div class="row">
-      <div class="day-tile"><div class="day-tile-label">Avg</div><div class="day-tile-val" id="hr-avg">—</div></div>
-      <div class="day-tile"><div class="day-tile-label">Max</div><div class="day-tile-val" id="hr-max">—</div></div>
-      <div class="day-tile"><div class="day-tile-label">Time</div><div class="day-tile-val" id="hr-time">0:00</div></div>
-    </div>
-    <div class="sheet-actions">
-      <button type="button" class="btn btn-ghost" id="hr-stop">Stop &amp; Save</button>
-    </div>
-  </div>
 
   <!-- Rule form -->
   <form id="form-rule" class="sheet-form" data-form="rule" style="display:none">
@@ -2384,6 +2369,47 @@ body::before {
     <button class="sheet-close" type="button" data-close>×</button>
   </div>
   <div class="sheet-body" id="recipe-detail-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));"></div>
+</div>
+
+<!-- Data export sheet -->
+<div id="sheet-export" class="sheet hidden" data-sheet-id="export">
+  <div class="sheet-head">
+    <div class="sheet-title">Export Your Data</div>
+    <button class="sheet-close" type="button" data-close>×</button>
+  </div>
+  <div class="sheet-body" style="padding-bottom: calc(20px + env(safe-area-inset-bottom));">
+
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 0 0 8px;">WHAT YOU GET</div>
+    <p style="font-size: 13px; color: var(--text); line-height: 1.6; margin: 0 0 12px;">
+      A single JSON file containing every row Game of Life has stored for you.
+      You can keep it, save it as a backup, or import it into anything that
+      reads JSON.
+    </p>
+    <ul style="font-size: 12px; color: var(--muted); line-height: 1.7; padding-left: 18px; margin: 0 0 18px;">
+      <li>Character, profile, subscription status</li>
+      <li>Every workout, meal, vital, quest, boss, streak event</li>
+      <li>Every transaction synced via Plaid + balance history</li>
+      <li>Email metadata you've triaged (subject lines, importance — never body content)</li>
+      <li>Custom rules and life domains you've added</li>
+      <li>Tier rewards and referral codes</li>
+      <li>Your connections (banks, email accounts — credentials removed for security)</li>
+    </ul>
+
+    <div style="background: rgba(245,200,66,0.06); border-left: 2px solid var(--gold); padding: 10px 12px; border-radius: 0 8px 8px 0; font-size: 11px; line-height: 1.6; color: var(--muted); margin-bottom: 18px;">
+      <b style="color: var(--gold);">Security note:</b> bank-link tokens and push keys are stripped before export. The metadata around them stays so you can see what was connected.
+    </div>
+
+    <div style="font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 0.16em; color: var(--gold); margin: 0 0 8px;">RATE LIMIT</div>
+    <p style="font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0 0 8px;">
+      You can export once every 24 hours. <span id="export-last">No exports yet.</span>
+    </p>
+
+    <button type="button" class="btn" id="export-download-btn" style="width:100%; margin-top: 18px;">
+      <span id="export-btn-label">Download my data (.json)</span>
+    </button>
+    <div id="export-msg" style="font-size: 12px; margin-top: 10px; min-height: 18px; line-height: 1.5;"></div>
+
+  </div>
 </div>
 
 <div id="sheet-account" class="sheet hidden" data-sheet-id="account">
