@@ -1,0 +1,56 @@
+# .github/workflows/mirror-to-gitlab.yml
+#
+# Auto-mirror every push on this repo to a matching GitLab repo.
+# Safe to land before the GitLab side is set up — the job skips cleanly
+# if GITLAB_TOKEN / GITLAB_USER secrets aren't configured yet.
+#
+# Required secrets (set in GitHub repo Settings → Secrets and variables → Actions):
+#   GITLAB_TOKEN — Personal Access Token from GitLab with 'write_repository' scope
+#   GITLAB_USER  — Your GitLab username (e.g., 'godspeed2077')
+#
+# The matching GitLab repo must already exist at:
+#   https://gitlab.com/<GITLAB_USER>/<this-repo-name>
+
+name: Mirror to GitLab
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  delete:
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that GitLab secrets are configured
+        id: precheck
+        run: |
+          if [ -z "${{ secrets.GITLAB_TOKEN }}" ] || [ -z "${{ secrets.GITLAB_USER }}" ]; then
+            echo "GitLab secrets not configured yet — skipping mirror."
+            echo "Set GITLAB_TOKEN and GITLAB_USER in repo Settings → Secrets to enable."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout (full history + all refs)
+        if: steps.precheck.outputs.ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Push to GitLab
+        if: steps.precheck.outputs.ready == 'true'
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_USER: ${{ secrets.GITLAB_USER }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          GITLAB_URL="https://oauth2:${GITLAB_TOKEN}@gitlab.com/${GITLAB_USER}/${REPO_NAME}.git"
+          git remote add gitlab "${GITLAB_URL}"
+          git push --mirror gitlab
+          echo "Mirrored to gitlab.com/${GITLAB_USER}/${REPO_NAME}"
