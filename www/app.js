@@ -3784,6 +3784,20 @@ async function renderQuestsHistory() {
 
 // Wire up button + tabs + close
 document.addEventListener('DOMContentLoaded', () => {
+  // === Per-domain levels toggle (Body / Mind / Money panel under XP bar) ===
+  const domToggle = document.getElementById('domains-toggle');
+  const domPanel = document.getElementById('domains-panel');
+  const domLabel = document.getElementById('domains-toggle-label');
+  const domIcon = document.getElementById('domains-toggle-icon');
+  if (domToggle && domPanel) {
+    domToggle.addEventListener('click', () => {
+      domainsExpanded = !domainsExpanded;
+      domPanel.style.display = domainsExpanded ? '' : 'none';
+      if (domLabel) domLabel.textContent = domainsExpanded ? 'Hide per-domain levels' : 'Show per-domain levels';
+      if (domIcon) domIcon.textContent = domainsExpanded ? '▴' : '▾';
+    });
+  }
+
   // === Hamburger menu wiring ===
   const menuBtn = document.getElementById('menu-btn');
   if (menuBtn) menuBtn.addEventListener('click', openNavMenu);
