@@ -23,7 +23,7 @@
     }
   },
   "server": {
-    "url": "https://gameoflifeapp.vercel.app",
+    "url": "https://www.forgepointrelay.com",
     "cleartext": false,
     "androidScheme": "https"
   }
