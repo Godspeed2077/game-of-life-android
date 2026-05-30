@@ -1801,7 +1801,7 @@ function renderAccount() {
   pill.textContent = labels[s] || s.toUpperCase();
   pill.className = 'acct-status-pill ' + (s === 'none' ? 'free' : s);
   if (tier && s !== 'none') {
-    const prices = { founding: '$10/mo', early: '$15/mo', regular: '$19/mo' };
+    const prices = { founding: '$10 every 30 days', early: '$15 every 30 days', regular: '$19 every 30 days' };
     const num = subscription.founding_member_number;
     tierEl.textContent = (tier === 'founding' && num ? `Founding member #${num} · ` : tier === 'founding' ? 'Founding · ' : tier === 'early' ? 'Early · ' : 'Regular · ') + prices[tier];
   } else { tierEl.textContent = ''; }
@@ -1815,11 +1815,11 @@ function renderAccount() {
     const days = Math.max(0, Math.ceil(msLeft / 86400000));
     if (msLeft <= 0) {
       trialNote.textContent = 'Trial just ended · subscribe to keep AI features';
-      btn.textContent = 'Subscribe — $10/mo';
+      btn.textContent = 'Subscribe — $10 / 30 days';
       btn.style.display = '';
     } else {
       trialNote.textContent = `Trial ends in ${days} day${days===1?'':'s'} · ${end.toLocaleDateString()} · subscribe anytime to lock in pricing`;
-      btn.textContent = 'Subscribe — $10/mo';
+      btn.textContent = 'Subscribe — $10 / 30 days';
       btn.style.display = '';
     }
   } else if (s === 'active') {
